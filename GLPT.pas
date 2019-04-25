@@ -42,7 +42,7 @@ uses
 {$ENDIF}
 {$IFDEF DARWIN}
   FGL, SysUtils, BaseUnix, Unix, 
-  IOKit, MacOSAll, CocoaAll;
+  MacOSAll, CocoaAll;
 {$ENDIF}
 
 const
@@ -687,24 +687,6 @@ type
     shiftstate: TShiftState;   //< shift state of the keyboard
   end;
 
-  GLPT_MsgParmControllerAxis = record
-    which: SInt16;
-    axis: UInt8;
-    value: SInt16;
-  end;
-
-  GLPT_MsgParmControllerHat = record
-    which: SInt16;
-    hat: Uint8;
-    value: SInt16;
-  end;
-
-  GLPT_MsgParmControllerButton = record
-    which: UInt32;
-    button: Uint8;
-    state: Uint8;
-  end;
-
   GLPT_MsgParmUser = record
     param1: pointer;   //< custom message 1
     param2: pointer;   //< custom message 2
@@ -743,15 +725,6 @@ type
     bottom: longint;   //< bottom position of rectangle
   end;
 
-  // TODO: fix these names
-  GLPT_InitFlagsEnum = (
-                      GLPT_FlagGamepad
-                    );
-  GLPT_InitFlags = set of GLPT_InitFlagsEnum;
-
-const
-  GLPT_InitFlagsAll = [GLPT_FlagGamepad];
-
 {
    This function returns the GLPT version as string.
    @return the GLPT version
@@ -787,7 +760,7 @@ procedure GLPT_Delay(ms: longint);
    Initializes the GLPT library
    @return True if successfull otherwise False
 }
-function GLPT_Init (flags: GLPT_InitFlags = GLPT_InitFlagsAll): boolean;
+function GLPT_Init: boolean;
 
 {
    Terminates the GLPT library
@@ -920,7 +893,6 @@ uses
 {$ENDIF}
 
 {$i include/GLPT_Keyboard.inc}
-{$i include/GLPT_Controller.inc}
 
 type
   pLink = ^Link;
@@ -1051,7 +1023,7 @@ end;
 //***  Native functions  ***********************************************************************************************
 
 {$IFDEF MSWINDOWS}
-
+  {$i include/GLPT_gdi.inc}
 {$ENDIF}
 {$IFDEF LINUX}
   {$i include/GLPT_X11.inc}
@@ -1546,7 +1518,7 @@ begin
 {$ENDIF}
 end;
 
-function GLPT_Init (flags: GLPT_InitFlags = GLPT_InitFlagsAll): boolean;
+function GLPT_Init: boolean;
 begin
   //reset the last error
   lasterr.error := GLPT_ERROR_NONE;
@@ -1556,13 +1528,13 @@ begin
   initticks := GLPT_GetTicks;
 
 {$IFDEF MSWINDOWS}
-  exit(gdi_Init(flags));
+  exit(gdi_Init);
 {$ENDIF}
 {$IFDEF LINUX}
-  exit(X11_Init(flags));
+  exit(X11_Init);
 {$ENDIF}
 {$IFDEF DARWIN}
-  exit(Cocoa_Init(flags));
+  exit(Cocoa_Init);
 {$ENDIF}
 end;
 
