@@ -34,7 +34,16 @@ function Cocoa_SemaphoreWait(sem: pGLPT_Semaphore): integer;
 begin
   result := sem_wait(sem^.handle);
   if result < 0 then
-    result := GLPTError(GLPT_ERROR_THREADS, 'sem_wait() failed '+IntToStr(fpGetErrno));
+    case fpGetErrno of
+     // todo: we should be able to install a handler using FpSignal but
+     // I can't get it work so just ignore these errors for now
+     // EINTR is triggered from the debugger but can be safely ignored
+     // http://250bpm.com/blog:12
+      ESysEINTR:
+        result := 0;
+      otherwise
+        result := GLPTError(GLPT_ERROR_THREADS, 'sem_wait() failed '+IntToStr(fpGetErrno));
+    end;
 end;
 
 function Cocoa_SemaphoreWaitTimeout(sem: pGLPT_Semaphore; timeout: longint): integer;
