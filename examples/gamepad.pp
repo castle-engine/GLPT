@@ -1,3 +1,6 @@
+{
+  requires -dGLPT_GAMEPAD to use GLPT_FlagGamepad
+}
 program gamepad;
 
 {$mode objfpc}

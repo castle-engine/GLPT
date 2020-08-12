@@ -238,10 +238,43 @@ type
       function canBecomeMainWindow: objcbool; override;
       procedure setKeepFullScreenAlways (newValue: boolean); message 'setKeepFullScreenAlways:';
       procedure dealloc; override;
+      procedure toggleFullScreen(sender: id); override;
     private
       keepFullScreenAlways: boolean;
+      previousStyleMask: NSUInteger;
+      previousFrame: NSRect;
+      function fullScreenFrame: NSRect; message 'fullScreenFrame';
+      function isFullScreen: boolean; message 'isFullScreen';
       procedure screenParametersChanged (notification: NSNotification); message 'screenParametersChanged:';
   end;
+
+const
+  NSWindowCollectionBehaviorFullScreenPrimary = 1 shl 7 { available in 10_7 };
+  NSWindowCollectionBehaviorFullScreenAuxiliary = 1 shl 8 { available in 10_7 };
+  NSWindowCollectionBehaviorFullScreenNone = 1 shl 9 { available in 10_7 };
+
+procedure TBorderlessWindow.toggleFullScreen(sender: id);
+begin
+  inherited toggleFullScreen(sender);
+  NSMenu.setMenuBarVisible(not isFullScreen);
+
+  //if isFullScreen then
+  //  begin
+  //    setKeepFullScreenAlways(false);
+  //    NSMenu.setMenuBarVisible(true);
+  //    setFrame_display(previousFrame, true);
+  //  end
+  //else
+  //  begin
+  //    previousStyleMask := styleMask;
+  //    previousFrame := frame;
+  //    setKeepFullScreenAlways(true);
+  //    NSMenu.setMenuBarVisible(false);
+  //    // TODO: this gives a strange opengl error
+  //    // glUseProgram 9 GL_INVALID_FRAMEBUFFER_OPERATION ($0506) (GLUtils.pas, line 641)
+  //    //setStyleMask(NSBorderlessWindowMask);
+  //  end;
+end;
 
 function TBorderlessWindow.canBecomeKeyWindow: objcbool;
 begin
@@ -253,18 +286,34 @@ begin
   result := true;
 end;
 
+function TBorderlessWindow.fullScreenFrame: NSRect;
+begin
+  result := screen.frame;
+end;
+
+function TBorderlessWindow.isFullScreen: boolean;
+begin
+  result := styleMask = (styleMask or NSFullScreenWindowMask)
+
+end;
+
 procedure TBorderlessWindow.setKeepFullScreenAlways (newValue: boolean);
 begin
   orderFrontRegardless;
   keepFullScreenAlways := newValue;
   if keepFullScreenAlways then
-    setFrame_display(screen.frame, true);
+    begin
+      setFrame_display(fullScreenFrame, true);
+      setLevel(CGWindowLevelForKey(kCGFloatingWindowLevelKey));
+    end
+  else
+    setLevel(CGWindowLevelForKey(kCGNormalWindowLevelKey));
 end;
 
 procedure TBorderlessWindow.screenParametersChanged (notification: NSNotification);
 begin 
   if keepFullScreenAlways then
-    setFrame_display(NSScreen.mainScreen.frame, true);
+    setFrame_display(fullScreenFrame, true);
 end;
 
 procedure TBorderlessWindow.dealloc;
@@ -301,9 +350,23 @@ type
       procedure becomeKeyWindow; override;
       procedure resignKeyWindow; override;
       procedure doCommandBySelector(aSelector: SEL); override;
+      procedure bringToFront(sender: id); message 'bringToFront:';
+      procedure toggleFullScreen(sender: id); override;
     private
       ref: pGLPTwindow;
   end;
+
+procedure TCocoaWindow.toggleFullScreen(sender: id);
+begin
+  inherited toggleFullScreen(sender);
+  ref^.fscreen := isFullScreen;
+end;
+
+procedure TCocoaWindow.bringToFront(sender: id);
+begin
+  NSApp.activateIgnoringOtherApps(true);
+  orderFrontRegardless;
+end;
 
 procedure TCocoaWindow.close;
 begin
@@ -345,6 +408,7 @@ type
 
 type
   TCocoaAppDelegate = objcclass (NSObject, NSApplicationDelegateProtocol)
+
   end;
 
 function Cocoa_GetKeyboardShiftState: TShiftState; forward;
@@ -354,6 +418,63 @@ function Cocoa_GetTime: double; forward;
 procedure Cocoa_PollDevices; forward;
 {$endif}
 
+//#########################################################
+// COCOA OPENGL VIEW
+//#########################################################
+
+type
+  TOpenGLView = objcclass (NSView)
+    public
+      function initWithFrame(frameRect: NSRect): id; override;
+      function isOpaque: objcbool; override;
+      procedure viewDidMoveToWindow; override;
+      procedure mouseEntered(theEvent: NSEvent); override;
+      procedure mouseExited(theEvent: NSEvent); override;
+      procedure doCommandBySelector(aSelector: SEL); override;
+      procedure keyDown(theEvent: NSEvent); override;
+      procedure drawRect(dirtyRect: NSRect); override;
+      procedure dealloc; override;
+      procedure updateTrackingAreas; override;
+      function acceptsFirstMouse (theEvent: NSEvent): objcbool; override;
+    private
+      openGLContext: NSOpenGLContext;
+      trackingArea: NSTrackingArea;
+      displayLink: CVDisplayLinkRef;
+      displayLinkSemaphore: pGLPT_Semaphore;
+      isLiveResizing: boolean;
+
+      function defaultPixelFormat: NSOpenGLPixelFormat; message 'defaultPixelFormat';
+      function windowRef: pGLPTwindow; message 'windowRef';
+      function glptContext: GLPT_Context; message 'glptContext';
+
+      procedure setupContext; message 'setupContext';
+
+      procedure frameChanged (sender: NSNotification); message 'frameChanged:';
+      procedure windowWillStartLiveResize (sender: NSNotification); message 'windowWillStartLiveResize:';
+      procedure windowDidEndLiveResize (sender: NSNotification); message 'windowDidEndLiveResize:';
+      procedure reshape; message 'reshape';
+  end;
+
+
+function HandleMouseEvent(event: NSEvent; var params: GLPT_MessageParams): boolean;
+begin
+  FillChar(params, sizeof(params), 0);
+  result := event.window <> nil;
+
+  // point is outside of content view
+  if result and (CGRectContainsPoint(event.window.contentView.frame, event.locationInWindow) <> 1) then
+    exit(false);
+
+  if result then
+    begin
+      //writeln(event.window.description.utf8string, ' -> ', Trunc(event.locationInWindow.x),'x',Trunc(event.locationInWindow.y));
+      params.mouse.x := Trunc(event.locationInWindow.x);
+      params.mouse.y := Trunc(event.window.contentView.frame.size.height - event.locationInWindow.y);
+      params.mouse.shiftstate := Cocoa_GetKeyboardShiftState;
+      params.mouse.timestamp := Cocoa_GetTime;
+    end;
+end;
+
 procedure TCocoaApp.poll;
 var
   event: NSEvent;
@@ -361,6 +482,8 @@ var
   win: pGLPTwindow = nil;
   pool: NSAutoreleasePool;
   keymap: GLPTKeymapArrayPtr;
+label
+  IgnoreEvent;
 begin
   {$ifdef GLPT_GAMEPAD}
   Cocoa_PollDevices;
@@ -374,45 +497,43 @@ begin
 
       if event.window <> nil then
         win := TCocoaWindow(event.window).ref;
-
+     
       case event.type_ of
         NSScrollWheel:
           begin
-            params.mouse.x := Trunc(event.locationInWindow.x);
-            params.mouse.y := Trunc(event.window.contentView.frame.size.height - event.locationInWindow.y);
-            params.mouse.deltaX := event.deltaX;
-            params.mouse.deltaY := event.deltaY;
-            params.mouse.timestamp := Cocoa_GetTime;
-            params.mouse.shiftstate := Cocoa_GetKeyboardShiftState;
-            glptPostMessage(win, GLPT_MESSAGE_SCROLL, params);
+            if not HandleMouseEvent(event, params) then
+              goto IgnoreEvent;
+
+            // ignore movement outside of content view, which is probably the title bar
+            if (params.mouse.x > 0) and (params.mouse.y > 0) then
+              begin
+                params.mouse.deltaX := event.deltaX;
+                params.mouse.deltaY := event.deltaY;
+                glptPostMessage(win, GLPT_MESSAGE_SCROLL, params);
+              end;
           end;
         NSLeftMouseDragged, NSRightMouseDragged:
           begin
-            params.mouse.x := Trunc(event.locationInWindow.x);
-            params.mouse.y := Trunc(event.window.contentView.frame.size.height - event.locationInWindow.y);
-            params.mouse.shiftstate := Cocoa_GetKeyboardShiftState;
-            params.mouse.timestamp := Cocoa_GetTime;
+            if not HandleMouseEvent(event, params) then
+              goto IgnoreEvent;
             glptPostMessage(win, GLPT_MESSAGE_MOUSEMOVE, params);
           end;
         NSMouseMoved:
           begin
-            params.mouse.x := Trunc(event.locationInWindow.x);
-            params.mouse.y := Trunc(event.window.contentView.frame.size.height - event.locationInWindow.y);
-            params.mouse.shiftstate := Cocoa_GetKeyboardShiftState;
-            params.mouse.timestamp := Cocoa_GetTime;
+            if not HandleMouseEvent(event, params) then
+              goto IgnoreEvent;
             glptPostMessage(win, GLPT_MESSAGE_MOUSEMOVE, params);
           end;
         NSLeftMouseDown, NSRightMouseDown:
           begin
-            params.mouse.x := Trunc(event.locationInWindow.x);
-            params.mouse.y := Trunc(event.window.contentView.frame.size.height - event.locationInWindow.y);
+            if not HandleMouseEvent(event, params) then
+              goto IgnoreEvent;
+
             params.mouse.clicks := event.clickCount;
 
-            // ignore clicks outside of content view, which is probably the title bar
+            // ignore clicks outside content view, which is probably the title bar
             if (params.mouse.x > 0) and (params.mouse.y > 0) then
               begin
-                params.mouse.shiftstate := Cocoa_GetKeyboardShiftState;
-                params.mouse.timestamp := Cocoa_GetTime;
                 case event.type_ of
                   NSLeftMouseDown:
                     params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
@@ -424,17 +545,20 @@ begin
           end;
         NSLeftMouseUp, NSRightMouseUp:
           begin
-            params.mouse.x := Trunc(event.locationInWindow.x);
-            params.mouse.y := Trunc(event.window.contentView.frame.size.height - event.locationInWindow.y);
-            params.mouse.shiftstate := Cocoa_GetKeyboardShiftState;
-            params.mouse.timestamp := Cocoa_GetTime;
-            case event.type_ of
-              NSLeftMouseUp:
-                params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
-              NSRightMouseUp:
-                params.mouse.buttons := GLPT_MOUSE_BUTTON_RIGHT;
-            end;
-            glptPostMessage(win, GLPT_MESSAGE_MOUSEUP, params);
+            if not HandleMouseEvent(event, params) then
+              goto IgnoreEvent;
+
+            // ignore clicks outside of content view, which is probably the title bar
+            if (params.mouse.x > 0) and (params.mouse.y > 0) then
+              begin
+                case event.type_ of
+                  NSLeftMouseUp:
+                    params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
+                  NSRightMouseUp:
+                    params.mouse.buttons := GLPT_MOUSE_BUTTON_RIGHT;
+                end;
+                glptPostMessage(win, GLPT_MESSAGE_MOUSEUP, params);
+              end;
           end;
         NSKeyDown, NSKeyUp:
           begin
@@ -461,47 +585,13 @@ begin
           ;
       end;
 
+      IgnoreEvent:
       sendEvent(event);
       updateWindows;
     end;
   pool.release;
 end;
 
-//#########################################################
-// COCOA OPENGL VIEW
-//#########################################################
-
-type
-  TOpenGLView = objcclass (NSView)
-    public
-      function initWithFrame(frameRect: NSRect): id; override;
-      function isOpaque: objcbool; override;
-      procedure viewDidMoveToWindow; override;
-      procedure mouseEntered(theEvent: NSEvent); override;
-      procedure mouseExited(theEvent: NSEvent); override;
-      procedure doCommandBySelector(aSelector: SEL); override;
-      procedure keyDown(theEvent: NSEvent); override;
-      procedure drawRect(dirtyRect: NSRect); override;
-      procedure dealloc; override;
-      procedure updateTrackingAreas; override;
-    private
-      openGLContext: NSOpenGLContext;
-      trackingArea: NSTrackingArea;
-      displayLink: CVDisplayLinkRef;
-      displayLinkSemaphore: pGLPT_Semaphore;
-      isLiveResizing: boolean;
-
-      function defaultPixelFormat: NSOpenGLPixelFormat; message 'defaultPixelFormat';
-      function windowRef: pGLPTwindow; message 'windowRef';
-      function glptContext: GLPT_Context; message 'glptContext';
-
-      procedure setupContext; message 'setupContext';
-
-      procedure frameChanged (sender: NSNotification); message 'frameChanged:';
-      procedure windowWillStartLiveResize (sender: NSNotification); message 'windowWillStartLiveResize:';
-      procedure windowDidEndLiveResize (sender: NSNotification); message 'windowDidEndLiveResize:';
-      procedure reshape; message 'reshape';
-  end;
 
 // note: setValues_forParameter in RTL headers is parsed wrong
 type
@@ -514,11 +604,25 @@ begin
   result := TCocoaWindow(window).ref;
 end;
 
+function TOpenGLView.acceptsFirstMouse (theEvent: NSEvent): objcbool;
+begin
+  // accepts first mouse is supposed to ignore the click
+  // the activates the window but for some reason it's
+  // not working, so we simply discard the mouse down
+  // message which is sent *before* this method is called.
+  // also to make matters worse acceptsFirstMouse is called
+  // for *every* mouse down when the window is fullscreen
+  // so we need to omit this check entirely in that case
+  if not TCocoaWindow(window).isFullScreen then
+    glptDiscardMessages(GLPT_MESSAGE_MOUSEDOWN);
+  result := true;
+end;
+
 procedure TOpenGLView.updateTrackingAreas;
 begin 
   if trackingArea <> nil then
     removeTrackingArea(trackingArea);
-  trackingArea := NSTrackingArea.alloc.initWithRect_options_owner_userInfo(bounds, NSTrackingMouseEnteredAndExited + NSTrackingActiveAlways, self, nil).autorelease;
+  trackingArea := NSTrackingArea.alloc.initWithRect_options_owner_userInfo(bounds, NSTrackingMouseEnteredAndExited + NSTrackingActiveInActiveApp, self, nil).autorelease;
   addTrackingArea(trackingArea);
 end;
 
@@ -537,6 +641,7 @@ var
    params: GLPT_MessageParams;
 begin
   FillChar(params, sizeof(params), 0);
+  HandleMouseEvent(theEvent, params);
   glptPostMessage(windowRef, GLPT_MESSAGE_MOUSEENTER, params);      
 end;
 
@@ -606,6 +711,9 @@ end;
 
 procedure TOpenGLView.windowWillStartLiveResize (sender: NSNotification);
 begin
+  // if a mouse down was queued before resizing we need to discard it
+  // so it doesn't get polled after resizing is complete
+  glptDiscardMessages(GLPT_MESSAGE_MOUSEDOWN);
   isLiveResizing := true;
 end;
 
@@ -764,57 +872,52 @@ begin
   win^.ref := nil;
 end;
 
+function TestFlag(const flags: Longint; const bit: Byte): Boolean;
+begin
+  Result := flags = (flags or bit);
+end;
+
 function Cocoa_CreateWindow(win: pGLPTwindow; posx, posy, sizex, sizey: integer; title: PChar): boolean;
-const
-  NSWindowCollectionBehaviorFullScreenPrimary = 1 shl 7 { available in 10_7 };
-  NSWindowCollectionBehaviorFullScreenAuxiliary = 1 shl 8 { available in 10_7 };
 var
   window: TCocoaWindow;
   openGLView: TOpenGLView;
   screen: NSScreen;
   windowFlags: NSUInteger = 0;
-  flags: longint;
-begin
-  flags := win^.flags;
-  if flags = GLPT_WINDOW_DEFAULT then
-    begin
-      windowFlags := NSTitledWindowMask + NSClosableWindowMask + NSMiniaturizableWindowMask + NSResizableWindowMask;
-    end
-  else
-    begin
-      if flags = (flags or GLPT_WINDOW_TITLED) then
-        windowFlags += NSTitledWindowMask;
-      if flags = (flags or GLPT_WINDOW_CLOSABLE) then
-        windowFlags += NSClosableWindowMask;
-      if flags = (flags or GLPT_WINDOW_MINIATURIZABLE) then
-        windowFlags += NSMiniaturizableWindowMask;
-      if flags = (flags or GLPT_WINDOW_RESIZABLE) then
-        windowFlags += NSResizableWindowMask;
-      if flags = (flags or GLPT_WINDOW_BORDERLESS) then
-        windowFlags := NSBorderlessWindowMask;
-    end;
+begin  
+  if TestFlag(win^.flags, GLPT_WINDOW_TITLED) then
+    windowFlags += NSTitledWindowMask;
+  if TestFlag(win^.flags, GLPT_WINDOW_CLOSABLE) then
+    windowFlags += NSClosableWindowMask;
+  if TestFlag(win^.flags, GLPT_WINDOW_MINIATURIZABLE) then
+    windowFlags += NSMiniaturizableWindowMask;
+  if TestFlag(win^.flags, GLPT_WINDOW_RESIZABLE) then
+    windowFlags += NSResizableWindowMask;
 
-  if flags <> (flags or GLPT_WINDOW_FULLSCREEN) then
-    begin
-      screen := NSScreen.mainScreen;
-      if posx = GLPT_WINDOW_POS_CENTER then
-        posx := trunc(NSWidth(screen.frame)/2 - sizex/2);
-      if posy = GLPT_WINDOW_POS_CENTER then
-        posy := trunc(NSHeight(screen.frame)/2 - sizey/2);
+  // if the window is borderless than ignore all other flags
+  if TestFlag(win^.flags, GLPT_WINDOW_BORDERLESS) then
+    windowFlags := NSBorderlessWindowMask;
 
-      window := TCocoaWindow.alloc.initWithContentRect_styleMask_backing_defer(NSMakeRect(posx, posy, sizex, sizey), windowFlags, NSBackingStoreBuffered, false);
-      window.setTitle(NSSTR(title));
-    end
-  else
-    begin
-      window := TCocoaWindow.alloc.initWithContentRect(NSMakeRect(posx, posy, sizex, sizey));
-      window.setKeepFullScreenAlways(true);
-    end;
+  screen := NSScreen.mainScreen;
+  if posx = GLPT_WINDOW_POS_CENTER then
+    posx := trunc(NSWidth(screen.frame)/2 - sizex/2);
+  if posy = GLPT_WINDOW_POS_CENTER then
+    posy := trunc(NSHeight(screen.frame)/2 - sizey/2);
+
+  window := TCocoaWindow.alloc.initWithContentRect_styleMask_backing_defer(NSMakeRect(posx, posy, sizex, sizey), windowFlags, NSBackingStoreBuffered, false);
+  window.setTitle(NSSTR(title));
+
+  //window.setLevel(CGWindowLevelForKey(kCGMainMenuWindowLevelKey));
+
+  writeln('level: ', window.level);
+  writeln('cocoa window: ',trunc(window.contentView.bounds.size.width),'x',trunc(window.contentView.bounds.size.height));
+
+  // enter fullscreen mode once context is setup
+  if TestFlag(win^.flags, GLPT_WINDOW_FULLSCREEN) then
+    window.performSelector_withObject_afterDelay(objcselector('toggleFullScreen:'), nil, 0.0);
 
   window.ref := win;
 
-  openGLView := TOpenGLView.alloc.initWithFrame(window.contentView.bounds);
-  //openGLView.setWantsLayer(true);
+  openGLView := TOpenGLView.alloc.initWithFrame(NSMakeRect(0, 0, sizex, sizey){window.contentView.bounds});
   window.setContentView(openGLView);
   openGLView.release;
 
@@ -826,6 +929,10 @@ begin
 
   win^.glcontext := openGLView.openGLContext;
   win^.ref := window;
+
+  // when running the terminal this helps to make sure
+  // window is ordered front after it launches
+  //window.performSelector_withObject_afterDelay(objcselector('bringToFront:'), nil, 0.5);
 
   exit(True);
 end;
@@ -852,8 +959,8 @@ end;
 
 procedure Cocoa_GetFrameBufferSize(win: pGLPTwindow; out width, height: integer);
 begin
-  width:= Trunc(win^.ref.contentView.bounds.size.width);
-  height:= Trunc(win^.ref.contentView.bounds.size.height);
+  width := Trunc(win^.ref.contentView.bounds.size.width);
+  height := Trunc(win^.ref.contentView.bounds.size.height);
 end;
 
 procedure Cocoa_PollEvents;
@@ -941,6 +1048,7 @@ begin
   windowMenu := NSMenu.alloc.initWithTitle(NSSTR('Window')).autorelease;
   windowMenu.addItemWithTitle_action_keyEquivalent(NSSTR('Minimize'), objcselector('performMiniaturize:'), NSSTR('m'));
   windowMenu.addItemWithTitle_action_keyEquivalent(NSSTR('Zoom'), objcselector('performZoom:'), NSSTR(''));
+  windowMenu.addItemWithTitle_action_keyEquivalent(NSSTR('Enter Full Screen'), objcselector('toggleFullScreen:'), NSSTR('F'));
 
   AddMenu(windowMenu);
 end;
@@ -1431,6 +1539,11 @@ begin
 end;
 {$endif}
 
+procedure HandleSignal_EINTR(sig: cint); cdecl;
+begin
+   writeln('***** Receiving signal: ', sig);
+end;
+
 function Cocoa_Init(flags: GLPT_InitFlags): boolean;
 var
   pool: NSAutoreleasePool;
@@ -1446,6 +1559,9 @@ begin
 
   // init the fpc heap manager
   TThread.Create(false).WaitFor;
+
+  if fpSignal(ESysEINTR, @HandleSignal_EINTR) = signalhandler(SIG_ERR) then
+    writeln('fpSignal error: ',fpGetErrno,'.');
 
   // set mac specific keynames
   GLPT_scancode_names[GLPT_SCANCODE_LALT] := 'Left Option';

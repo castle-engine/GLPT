@@ -633,13 +633,13 @@ const
   GLPT_CONTEXT_PROFILE_CORE = 2;
 
   // window style flags
-  GLPT_WINDOW_DEFAULT = 0;
   GLPT_WINDOW_BORDERLESS = $00000001;
   GLPT_WINDOW_TITLED = $00000002;
   GLPT_WINDOW_CLOSABLE = $00000004;
   GLPT_WINDOW_MINIATURIZABLE = $00000008;
   GLPT_WINDOW_RESIZABLE = $000000010;
   GLPT_WINDOW_FULLSCREEN = $000000020;
+  GLPT_WINDOW_DEFAULT = GLPT_WINDOW_TITLED + GLPT_WINDOW_CLOSABLE + GLPT_WINDOW_MINIATURIZABLE + GLPT_WINDOW_RESIZABLE;
 
   GLPT_WINDOW_POS_CENTER = -MaxInt;
 
@@ -1185,6 +1185,25 @@ begin
   remove_link(msglist, pLink(msg));
   freemem(msg);
 end;
+
+procedure glptDiscardMessages(mcode: integer = -1);
+var
+  msg, next: pGLPT_MessageRec;
+begin
+  msg := pGLPT_MessageRec(msglist.first);
+  while msg <> nil do
+    begin
+      if (mcode = -1) or (msg^.mcode = mcode) then
+        begin
+          next := msg^.next;
+          glptDeleteMessage(msg);
+          msg := next;
+        end
+      else
+        msg := msg^.next;
+    end;
+end;
+
 
 //***  Native functions  ***********************************************************************************************
 
