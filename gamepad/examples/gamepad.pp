@@ -7,16 +7,12 @@ program gamepad;
 
 uses
   SysUtils,
-  GL, GLPT;
+  GL, GLPT, GLPT_Gamepad;
 
 var
   window: pGLPTWindow;
-  ratio: double;
   width: integer = 640;
   height: integer = 480;
-  nbFrames: longint = 0;
-  lastTime: double;
-  rotate: double;
 
   procedure error_callback(error: integer; description: string);
   begin
@@ -27,6 +23,14 @@ var
   begin
     case event^.mcode of
 
+      GLPT_MESSAGE_CONTROLLER_ADDED:
+        begin
+          writeln('controller added');
+        end;
+      GLPT_MESSAGE_CONTROLLER_REMOVED:
+        begin
+          writeln('controller removed');
+        end;
       GLPT_MESSAGE_CONTROLLER_AXIS:
         begin
           writeln('axis:',event^.params.axis.which,' ',event^.params.axis.axis, ' = ', event^.params.axis.value);
@@ -49,17 +53,17 @@ var
 begin
   GLPT_SetErrorCallback(@error_callback);
 
-  if not GLPT_Init([GLPT_FlagGamepad]) then
+  if not GLPT_Init or
+    not GLPT_GamepadInit then
     halt(-1);
 
-  window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, 'Simple example', GLPT_GetDefaultContext);
+  window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, 'Gamepad example', GLPT_GetDefaultContext);
   if window = nil then
   begin
     GLPT_Terminate;
     halt(-1);
   end;
 
-  ratio := width / height;
   window^.event_callback := @event_callback;
 
   writeln('GLPT version: ', GLPT_GetVersionString);
@@ -70,6 +74,7 @@ begin
     glViewport(0, 0, width, height);
     glClear(GL_COLOR_BUFFER_BIT);
     GLPT_SwapBuffers(window);
+    GLPT_PollDevices;
     GLPT_PollEvents;
   end;
 

@@ -2,7 +2,8 @@
 
 program mutex;
 uses
-  GLPT;
+  CThreads,
+  GLPT, GLPT_Threads;
 
 var
   lock: pGLPT_Mutex;

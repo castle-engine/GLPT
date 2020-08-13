@@ -2,7 +2,8 @@
 
 program semaphore;
 uses
-  GLPT;
+  CThreads,
+  GLPT, GLPT_Threads;
 
 var
   sem: pGLPT_Semaphore;

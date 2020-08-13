@@ -2,7 +2,8 @@
 
 program threads;
 uses
-  GLPT;
+  CThreads,
+  GLPT, GLPT_Threads;
 
 function thread_callback (userData: pointer): integer;
 var
