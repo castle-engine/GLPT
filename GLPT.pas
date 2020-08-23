@@ -1015,12 +1015,6 @@ function GLPT_GetPrefPath (org: string; app: string): string;
 }
 function GLPT_GetScancodeName (scancode: GLPT_Scancode): string;
 
-{
-  Enables or disables vsync
-  @param status: vsync status
-}
-procedure GLPT_SetVSync(sync: boolean);
-
 function GLPT_Main(argc: cint; argv: pchar): cint; cdecl; external;
 
 // Private functions exposed for extensions
@@ -1070,7 +1064,6 @@ var
   current_win: pGLPTwindow;
 
   inittime: double = 0;
-  initticks: longint = 0;
   lasterr: GLPT_error;
 
 //***  Error handling  *************************************************************************************************
@@ -1269,7 +1262,6 @@ begin
   lasterr.msg := '';
 
   inittime := GLPT_GetTime;
-  initticks := GLPT_GetTicks;
 
 {$IFDEF MSWINDOWS}
   exit(gdi_Init(flags));
@@ -1563,19 +1555,6 @@ end;
 function GLPT_GetScancodeName (scancode: GLPT_Scancode): string;
 begin
   result := GLPT_scancode_names[scancode];
-end;
-
-procedure GLPT_SetVSync(sync: boolean);
-begin
-{$IFDEF MSWINDOWS}
-  gdi_SetVSync(sync);
-{$ENDIF}
-{$IFDEF LINUX}
-  //X11_SetVSync(sync);
-{$ENDIF}
-{$IFDEF COCOA}
-  //Cocoa_SetVSync(sync);
-{$ENDIF}
 end;
 
 {$ifdef IPHONE}
