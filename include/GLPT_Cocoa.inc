@@ -247,6 +247,16 @@ begin
   result := NSString.stringWithCString_length(@str[1], length(str));
 end;
 
+type
+  TCocoaWindowHelper = objccategory (NSWindow)
+    function openGLView: NSView; message 'openGLView';
+  end;
+
+function TCocoaWindowHelper.openGLView: NSView;
+begin
+  result := contentView.subviews.objectAtIndex(0);
+end;
+
 //#########################################################
 // COCOA WINDOWS
 //#########################################################
@@ -437,7 +447,6 @@ type
 
 type
   TCocoaAppDelegate = objcclass (NSObject, NSApplicationDelegateProtocol)
-
   end;
 
 function Cocoa_GetKeyboardShiftState: TShiftState; forward;
@@ -452,6 +461,7 @@ type
     public
       function initWithFrame(frameRect: NSRect): id; override;
       function isOpaque: objcbool; override;
+      function isFlipped: objcbool; override;
       procedure viewDidMoveToWindow; override;
       procedure mouseEntered(theEvent: NSEvent); override;
       procedure mouseExited(theEvent: NSEvent); override;
@@ -467,6 +477,7 @@ type
       displayLink: CVDisplayLinkRef;
       displayLinkSemaphore: NSCondition;
       isLiveResizing: boolean;
+      nativeSize: CGSize;
 
       function defaultPixelFormat: NSOpenGLPixelFormat; message 'defaultPixelFormat';
       function windowRef: pGLPTwindow; message 'windowRef';
@@ -474,7 +485,9 @@ type
 
       procedure setupContext; message 'setupContext';
 
-      procedure frameChanged (sender: NSNotification); message 'frameChanged:';
+      { Notifications }
+      procedure frameDidChange (sender: NSNotification); message 'frameDidChange:';
+      procedure windowDidResize (sender: NSNotification); message 'windowDidResize:';
       procedure windowWillStartLiveResize (sender: NSNotification); message 'windowWillStartLiveResize:';
       procedure windowDidEndLiveResize (sender: NSNotification); message 'windowDidEndLiveResize:';
       procedure reshape; message 'reshape';
@@ -487,14 +500,14 @@ begin
   result := event.window <> nil;
 
   // point is outside of content view
-  if result and (CGRectContainsPoint(event.window.contentView.frame, event.locationInWindow) <> 1) then
+  if result and (CGRectContainsPoint(event.window.openGLView.frame, event.locationInWindow) <> 1) then
     exit(false);
 
   if result then
     begin
       //writeln(event.window.description.utf8string, ' -> ', Trunc(event.locationInWindow.x),'x',Trunc(event.locationInWindow.y));
       params.mouse.x := Trunc(event.locationInWindow.x);
-      params.mouse.y := Trunc(event.window.contentView.frame.size.height - event.locationInWindow.y);
+      params.mouse.y := Trunc(event.window.openGLView.frame.size.height - event.locationInWindow.y);
       params.mouse.shiftstate := Cocoa_GetKeyboardShiftState;
       params.mouse.timestamp := Cocoa_GetTime;
     end;
@@ -676,7 +689,6 @@ end;
 
 function DisplayLinkOutputCallback (displayLink: CVDisplayLinkRef; inNow: CVTimeStampPtr; inOutputTime: CVTimeStampPtr; flagsIn: CVOptionFlags; var flagsOut: CVOptionFlags; displayLinkContext: pointer): CVReturn; cdecl;
 begin 
-  //GLPT_SemaphorePost(TOpenGLView(displayLinkContext).displayLinkSemaphore);
   TOpenGLView(displayLinkContext).displayLinkSemaphore.signal;
   result := 0;
 end;
@@ -702,10 +714,11 @@ begin
   setWantsBestResolutionOpenGLSurface(glptContext.bestResolution);
   {$endif}
 
+  nativeSize := frame.size;
+
   // enable vsync
   if glptContext.vsync then
     begin
-      //displayLinkSemaphore := GLPT_CreateSemaphore(0);
       displayLinkSemaphore := NSCondition.alloc.init;
       CVDisplayLinkCreateWithActiveCGDisplays(displayLink);
       CVDisplayLinkSetOutputCallback(displayLink, CVDisplayLinkOutputCallback(@DisplayLinkOutputCallback), self);
@@ -726,7 +739,76 @@ begin
     openGLContext.clearDrawable;
 end;
 
-procedure TOpenGLView.frameChanged (sender: NSNotification);
+procedure TOpenGLView.windowDidResize (sender: NSNotification);
+
+  function ScaleToFit(source, dest: CGSize): CGRect;
+  var
+    aspectRatio: CGFloat;
+    newSize: CGSize;
+    newOrigin: CGPoint;
+  begin
+    aspectRatio := Min(dest.width, dest.height) / Min(source.width, source.height);
+    newOrigin := CGPointMake(0, 0);
+    newSize := CGSizeMake(source.width * aspectRatio, source.height * aspectRatio);
+    if dest.width > newSize.width then
+      newOrigin.x := (dest.width / 2) - (newSize.width / 2);
+    if dest.height > newSize.height then
+      newOrigin.y := (dest.height / 2) - (newSize.height / 2);
+    result := CGRectMake(newOrigin.x, newOrigin.y, newSize.width, newSize.height);
+  end;
+
+var
+  newFrame: NSRect;
+  bestSize,
+  targetSize: NSSize;
+begin
+  if sender.object_ = window then
+    begin
+
+      case glptContext.resizePolicy of
+        rpStretchToFill:
+          begin
+            newFrame.size.width := superview.bounds.size.width;
+            newFrame.size.height := superview.bounds.size.height;
+            newFrame.origin.x := 0;
+            newFrame.origin.y := 0;
+            setFrame(newFrame);
+          end;
+        rpScaleToFit:
+          begin
+            newFrame := ScaleToFit(frame.size, superview.bounds.size);
+            setFrame(newFrame);
+          end;
+        rpRealNative:
+          begin
+            newFrame := frame;
+            newFrame.origin.x := (superview.bounds.size.width / 2) - (newFrame.size.width / 2);
+            newFrame.origin.y := (superview.bounds.size.height / 2) - (newFrame.size.height / 2);
+            setFrame(newFrame);
+          end;
+        rpBestNative:
+          begin
+            bestSize := nativeSize;
+            targetSize := superview.bounds.size;
+            while (bestSize.width <= targetSize.width) or (bestSize.height <= targetSize.height) do
+              begin
+                if (bestSize.width * 2 > targetSize.width) and (bestSize.height * 2 > targetSize.height) then
+                  break;
+                bestSize.width *= 2;
+                bestSize.height *= 2;
+              end;
+            newFrame.size := bestSize;
+            newFrame.origin.x := (superview.bounds.size.width / 2) - (newFrame.size.width / 2);
+            newFrame.origin.y := (superview.bounds.size.height / 2) - (newFrame.size.height / 2);
+            setFrame(newFrame);
+          end;
+      end;
+
+    end;
+end;
+
+
+procedure TOpenGLView.frameDidChange (sender: NSNotification);
 begin
   if not isLiveResizing and assigned(openGLContext) then
     reshape;
@@ -771,6 +853,11 @@ function TOpenGLView.isOpaque: objcbool;
 begin
   // return false to make the view transparent
   result := window.backgroundColor.alphaComponent > 0;
+end;
+
+function TOpenGLView.isFlipped: objcbool;
+begin
+  result := true;
 end;
 
 function TOpenGLView.defaultPixelFormat: NSOpenGLPixelFormat;
@@ -849,7 +936,6 @@ begin
     CVDisplayLinkRelease(displayLink);
   if displayLinkSemaphore <> nil then
     begin
-      //GLPT_DestroySemaphore(displayLinkSemaphore);
       displayLinkSemaphore.release;
       displayLinkSemaphore := nil;
     end;
@@ -862,9 +948,10 @@ begin
   result := inherited initWithFrame(frameRect);
   if result <> nil then
     begin
+      NSNotificationCenter.defaultCenter.addObserver_selector_name_object(result, objcselector('windowDidResize:'), NSWindowDidResizeNotification, nil);
       NSNotificationCenter.defaultCenter.addObserver_selector_name_object(result, objcselector('windowWillStartLiveResize:'), NSWindowWillStartLiveResizeNotification, nil);
       NSNotificationCenter.defaultCenter.addObserver_selector_name_object(result, objcselector('windowDidEndLiveResize:'), NSWindowDidEndLiveResizeNotification, nil);
-      NSNotificationCenter.defaultCenter.addObserver_selector_name_object(result, objcselector('frameChanged:'), NSViewGlobalFrameDidChangeNotification, nil);
+      NSNotificationCenter.defaultCenter.addObserver_selector_name_object(result, objcselector('frameDidChange:'), NSViewGlobalFrameDidChangeNotification, nil);
     end;
 end;
 
@@ -907,9 +994,9 @@ end;
 function Cocoa_CreateWindow(win: pGLPTwindow; posx, posy, sizex, sizey: integer; title: PChar): boolean;
 var
   window: TCocoaWindow;
-  openGLView: TOpenGLView;
   screen: NSScreen;
   windowFlags: NSUInteger = 0;
+  openGLView: TOpenGLView;
 begin  
   if TestFlag(win^.flags, GLPT_WINDOW_TITLED) then
     windowFlags += NSTitledWindowMask;
@@ -930,12 +1017,13 @@ begin
   if posy = GLPT_WINDOW_POS_CENTER then
     posy := trunc(NSHeight(screen.frame)/2 - sizey/2);
 
+  // create cocoa window
   window := TCocoaWindow.alloc.initWithContentRect_styleMask_backing_defer(NSMakeRect(posx, posy, sizex, sizey), windowFlags, NSBackingStoreBuffered, false);
   window.setTitle(NSSTR(title));
 
   //window.setLevel(CGWindowLevelForKey(kCGMainMenuWindowLevelKey));
   //writeln('level: ', window.level);
-  //writeln('cocoa window: ',trunc(window.contentView.bounds.size.width),'x',trunc(window.contentView.bounds.size.height));
+  //writeln('cocoa window: ',trunc(window.openGLView.bounds.size.width),'x',trunc(window.openGLView.bounds.size.height));
 
   // enter fullscreen mode once context is setup
   if TestFlag(win^.flags, GLPT_WINDOW_FULLSCREEN) then
@@ -943,12 +1031,14 @@ begin
 
   window.ref := win;
 
-  openGLView := TOpenGLView.alloc.initWithFrame(NSMakeRect(0, 0, sizex, sizey){window.contentView.bounds});
-  window.setContentView(openGLView);
-  openGLView.release;
+  // create openGL view
+  openGLView := TOpenGLView.alloc.initWithFrame(NSMakeRect(0, 0, sizex, sizey)).autorelease;
+  // TODO: include background color in context
+  window.contentView.addSubview(openGLView);
 
+  // 
+  window.setBackgroundColor(NSColor.blackColor);
   window.makeFirstResponder(openGLView);
-
   window.setCollectionBehavior(NSWindowCollectionBehaviorFullScreenPrimary);
   window.setAcceptsMouseMovedEvents(true);
   window.makeKeyAndOrderFront(nil);
@@ -975,20 +1065,19 @@ procedure Cocoa_SwapBuffers(win: pGLPTwindow);
 var
   view: TOpenGLView;
 begin
-  view := TOpenGLView(win^.ref.contentView);
+  view := TOpenGLView(win^.ref.openGLView);
   if assigned(view.displayLinkSemaphore) then
-    //GLPT_SemaphoreWait(view.displayLinkSemaphore);
     view.displayLinkSemaphore.wait;
 
   // note: on 10.14 NSView.display was giving a black screen
   // https://stackoverflow.com/questions/52938516/opengl-not-rendering-on-macos-mojave
-  win^.ref.contentView.setNeedsDisplay_(true);
+  win^.ref.openGLView.setNeedsDisplay_(true);
 end;
 
 procedure Cocoa_GetFrameBufferSize(win: pGLPTwindow; out width, height: integer);
 begin
-  width := Trunc(win^.ref.contentView.bounds.size.width);
-  height := Trunc(win^.ref.contentView.bounds.size.height);
+  width := Trunc(win^.ref.openGLView.bounds.size.width);
+  height := Trunc(win^.ref.openGLView.bounds.size.height);
 end;
 
 procedure Cocoa_PollEvents;

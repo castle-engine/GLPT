@@ -52,7 +52,7 @@ unit GLPT;
 interface
 
 uses
-  Classes, CTypes,
+  Classes, Math, CTypes,
 {$IFDEF MSWINDOWS}
   Windows;
 {$ENDIF}
@@ -663,6 +663,12 @@ type
                        gsFailed,
                        gsUnknown);
 
+type
+  TContextResizePolicy = (rpStretchToFill,    // context stretches to fill entire window
+                          rpScaleToFit,       // context scales proportionately to fit the window
+                          rpRealNative,       // context maintains native size which was defined at startup
+                          rpBestNative        // context resizes by multiples of two until one dimension has been fitted
+                       );
 {$packset 1}
   TShiftState = set of TShiftStateEnum;
 {$packset default}
@@ -694,6 +700,7 @@ type
     multiSamples: byte;
     vsync: boolean;
     bestResolution: boolean;
+    resizePolicy: TContextResizePolicy;
   end;
 
   pGLPTwindow = ^GLPTwindow;
@@ -1323,6 +1330,7 @@ begin
   result.multiSamples := 0;
   result.vsync := true;
   result.bestResolution := false;
+  result.resizePolicy := rpStretchToFill;
 end;
 
 function GLPT_CreateWindow(posx, posy, sizex, sizey: integer; title: PChar; context: GLPT_Context; flags: longint = GLPT_WINDOW_DEFAULT): pGLPTwindow;
