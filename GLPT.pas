@@ -63,8 +63,7 @@ uses
   FGL, SysUtils, BaseUnix, Unix, MacOSAll, CocoaAll;
 {$ENDIF}
 {$IFDEF IPHONE}
-  SysUtils, BaseUnix, Unix, 
-  MacOSAll, iPhoneAll;
+  SysUtils, BaseUnix, Unix, MacOSAll, iPhoneAll;
 {$ENDIF}
 
 const

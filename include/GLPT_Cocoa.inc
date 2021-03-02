@@ -515,7 +515,7 @@ end;
 
 procedure TCocoaApp.poll;
 var
-  event: NSEvent;
+  event: NSEvent = nil;
   params: GLPT_MessageParams;
   win: pGLPTwindow = nil;
   pool: NSAutoreleasePool;
@@ -524,104 +524,110 @@ label
   IgnoreEvent;
 begin
   pool := NSAutoreleasePool.alloc.init;
-  event := nextEventMatchingMask_untilDate_inMode_dequeue(NSAnyEventMask, nil, NSDefaultRunLoopMode, true);
-  if event <> nil then
+  while event = nil do
     begin
-      //writeln(event.description.utf8string);
+      event := nextEventMatchingMask_untilDate_inMode_dequeue(NSAnyEventMask, nil, NSDefaultRunLoopMode, true);
+      if event <> nil then
+        begin
+          // get the cocoa window reference
+          if event.window <> nil then
+            win := TCocoaWindow(event.window).ref;
+      
+          // this is to prevent a bug during live resize
+          if TCocoaWindow(event.window).contentView.subviews.count = 0 then
+            goto IgnoreEvent;
 
-      if event.window <> nil then
-        win := TCocoaWindow(event.window).ref;
-     
-      case event.type_ of
-        NSScrollWheel:
-          begin
-            if not HandleMouseEvent(event, params) then
-              goto IgnoreEvent;
-
-            // ignore movement outside of content view, which is probably the title bar
-            if (params.mouse.x > 0) and (params.mouse.y > 0) then
+          case event.type_ of
+            NSScrollWheel:
               begin
-                params.mouse.deltaX := event.deltaX;
-                params.mouse.deltaY := event.deltaY;
-                glptPostMessage(win, GLPT_MESSAGE_SCROLL, params);
+                if not HandleMouseEvent(event, params) then
+                  goto IgnoreEvent;
+
+                // ignore movement outside of content view, which is probably the title bar
+                if (params.mouse.x > 0) and (params.mouse.y > 0) then
+                  begin
+                    params.mouse.deltaX := event.deltaX;
+                    params.mouse.deltaY := event.deltaY;
+                    glptPostMessage(win, GLPT_MESSAGE_SCROLL, params);
+                  end;
               end;
-          end;
-        NSLeftMouseDragged, NSRightMouseDragged:
-          begin
-            if not HandleMouseEvent(event, params) then
-              goto IgnoreEvent;
-            glptPostMessage(win, GLPT_MESSAGE_MOUSEMOVE, params);
-          end;
-        NSMouseMoved:
-          begin
-            if not HandleMouseEvent(event, params) then
-              goto IgnoreEvent;
-            glptPostMessage(win, GLPT_MESSAGE_MOUSEMOVE, params);
-          end;
-        NSLeftMouseDown, NSRightMouseDown:
-          begin
-            if not HandleMouseEvent(event, params) then
-              goto IgnoreEvent;
-
-            params.mouse.clicks := event.clickCount;
-
-            // ignore clicks outside content view, which is probably the title bar
-            if (params.mouse.x > 0) and (params.mouse.y > 0) then
+            NSLeftMouseDragged, NSRightMouseDragged:
               begin
+                if not HandleMouseEvent(event, params) then
+                  goto IgnoreEvent;
+                glptPostMessage(win, GLPT_MESSAGE_MOUSEMOVE, params);
+              end;
+            NSMouseMoved:
+              begin
+                if not HandleMouseEvent(event, params) then
+                  goto IgnoreEvent;
+                glptPostMessage(win, GLPT_MESSAGE_MOUSEMOVE, params);
+              end;
+            NSLeftMouseDown, NSRightMouseDown:
+              begin
+                if not HandleMouseEvent(event, params) then
+                  goto IgnoreEvent;
+
+                params.mouse.clicks := event.clickCount;
+
+                // ignore clicks outside content view, which is probably the title bar
+                if (params.mouse.x > 0) and (params.mouse.y > 0) then
+                  begin
+                    case event.type_ of
+                      NSLeftMouseDown:
+                        params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
+                      NSRightMouseDown:
+                        params.mouse.buttons := GLPT_MOUSE_BUTTON_RIGHT;
+                    end;
+                    glptPostMessage(win, GLPT_MESSAGE_MOUSEDOWN, params);
+                  end;
+              end;
+            NSLeftMouseUp, NSRightMouseUp:
+              begin
+                if not HandleMouseEvent(event, params) then
+                  goto IgnoreEvent;
+
+                // ignore clicks outside of content view, which is probably the title bar
+                if (params.mouse.x > 0) and (params.mouse.y > 0) then
+                  begin
+                    case event.type_ of
+                      NSLeftMouseUp:
+                        params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
+                      NSRightMouseUp:
+                        params.mouse.buttons := GLPT_MOUSE_BUTTON_RIGHT;
+                    end;
+                    glptPostMessage(win, GLPT_MESSAGE_MOUSEUP, params);
+                  end;
+              end;
+            NSKeyDown, NSKeyUp:
+              begin
+                // todo: implement UpdateKeymap
+                keymap := @GLPT_default_keymap;
+
+                params.keyboard.scancode := darwin_scancode_table[event.keycode];
+                params.keyboard.keycode := keymap^[params.keyboard.scancode];
+                params.keyboard.shiftstate := Cocoa_GetKeyboardShiftState;
+                
+                //writeln('scancode:',params.keyboard.scancode);
+                //writeln('keycode:',params.keyboard.keycode);
+                //writeln('keychar:',chr(params.keyboard.keycode));
+                //writeln('name:',GLPT_GetScancodeName(params.keyboard.scancode));
+
                 case event.type_ of
-                  NSLeftMouseDown:
-                    params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
-                  NSRightMouseDown:
-                    params.mouse.buttons := GLPT_MOUSE_BUTTON_RIGHT;
+                  NSKeyDown:
+                    glptPostMessage(win, GLPT_MESSAGE_KEYPRESS, params);
+                  NSKeyUp:
+                    glptPostMessage(win, GLPT_MESSAGE_KEYRELEASE, params);
                 end;
-                glptPostMessage(win, GLPT_MESSAGE_MOUSEDOWN, params);
               end;
+            otherwise
+              ;
           end;
-        NSLeftMouseUp, NSRightMouseUp:
-          begin
-            if not HandleMouseEvent(event, params) then
-              goto IgnoreEvent;
 
-            // ignore clicks outside of content view, which is probably the title bar
-            if (params.mouse.x > 0) and (params.mouse.y > 0) then
-              begin
-                case event.type_ of
-                  NSLeftMouseUp:
-                    params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
-                  NSRightMouseUp:
-                    params.mouse.buttons := GLPT_MOUSE_BUTTON_RIGHT;
-                end;
-                glptPostMessage(win, GLPT_MESSAGE_MOUSEUP, params);
-              end;
-          end;
-        NSKeyDown, NSKeyUp:
-          begin
-            // todo: implement UpdateKeymap
-            keymap := @GLPT_default_keymap;
-
-            params.keyboard.scancode := darwin_scancode_table[event.keycode];
-            params.keyboard.keycode := keymap^[params.keyboard.scancode];
-            params.keyboard.shiftstate := Cocoa_GetKeyboardShiftState;
-            
-            //writeln('scancode:',params.keyboard.scancode);
-            //writeln('keycode:',params.keyboard.keycode);
-            //writeln('keychar:',chr(params.keyboard.keycode));
-            //writeln('name:',GLPT_GetScancodeName(params.keyboard.scancode));
-
-            case event.type_ of
-              NSKeyDown:
-                glptPostMessage(win, GLPT_MESSAGE_KEYPRESS, params);
-              NSKeyUp:
-                glptPostMessage(win, GLPT_MESSAGE_KEYRELEASE, params);
-            end;
-          end;
-        otherwise
-          ;
-      end;
-
-      IgnoreEvent:
-      sendEvent(event);
-      updateWindows;
+          IgnoreEvent:
+            sendEvent(event);
+            updateWindows;
+        end;
     end;
   pool.release;
 end;
@@ -1033,10 +1039,9 @@ begin
 
   // create openGL view
   openGLView := TOpenGLView.alloc.initWithFrame(NSMakeRect(0, 0, sizex, sizey)).autorelease;
-  // TODO: include background color in context
   window.contentView.addSubview(openGLView);
 
-  // 
+  // TODO: include background color in context
   window.setBackgroundColor(NSColor.blackColor);
   window.makeFirstResponder(openGLView);
   window.setCollectionBehavior(NSWindowCollectionBehaviorFullScreenPrimary);
@@ -1071,7 +1076,13 @@ begin
 
   // note: on 10.14 NSView.display was giving a black screen
   // https://stackoverflow.com/questions/52938516/opengl-not-rendering-on-macos-mojave
-  win^.ref.openGLView.setNeedsDisplay_(true);
+  if view.glptContext.doubleBuffer then
+    win^.ref.openGLView.setNeedsDisplay_(true)
+  else
+    begin
+      glFlush;
+      win^.ref.openGLView.display;
+    end;
 end;
 
 procedure Cocoa_GetFrameBufferSize(win: pGLPTwindow; out width, height: integer);
