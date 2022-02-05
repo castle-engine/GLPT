@@ -78,6 +78,9 @@ uses
 { Threads }
 const
   GLPT_THREAD_DEFAULT_STACK_SIZE = 4096;
+  
+  GLPT_ERROR_MUTEX_TIMEDOUT = 256;
+  GLPT_MUTEX_MAXWAIT = High(LongWord);
 
 type
   pGLPT_Thread = ^GLPT_Thread;

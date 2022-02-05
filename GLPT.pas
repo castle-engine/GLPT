@@ -644,16 +644,6 @@ const
   GLPT_ERROR_THREADS = 3;
   GLPT_ERROR_UNKNOWN = 255;
 
-  GLPT_ERROR_MUTEX_TIMEDOUT = 256;
-
-type
-  { Types used by standard events }
-  TShiftStateEnum = (ssShift, ssAlt, ssCtrl,
-    ssLeft, ssRight, ssMiddle, ssDouble,
-    // Extra additions
-    ssMeta, ssSuper, ssHyper, ssAltGr, ssCaps, ssNum,
-    ssScroll, ssTriple, ssQuad, ssExtra1, ssExtra2);
-
 type
   TGestureStateEnum = (gsBegan,
                        gsChanged,
@@ -668,9 +658,6 @@ type
                           rpRealNative,       // context maintains native size which was defined at startup
                           rpBestNative        // context resizes by multiples of two until one dimension has been fitted
                        );
-{$packset 1}
-  TShiftState = set of TShiftStateEnum;
-{$packset default}
   
   GLPT_Scancode = LongWord;
   GLPT_Keycode = LongWord;
@@ -864,6 +851,10 @@ type
 const
   GLPT_InitFlagsAll = [GLPT_Gestures];
 
+{ note(ryan): testing idea of "presentation mode" that syncs drawing with cursor }
+var
+  GLPT_PresentationMode: boolean = false;
+
 {
    This function returns the GLPT version as string.
    @return the GLPT version
@@ -1021,7 +1012,23 @@ function GLPT_GetPrefPath (org: string; app: string): string;
 }
 function GLPT_GetScancodeName (scancode: GLPT_Scancode): string;
 
+{
+  Gets the clipboard contents
+  @return text contents of clipboard
+}
+function GLPT_GetClipboardText: UnicodeString;
+
+{
+  Sets the clipboard contents
+  @param text: the text to write to the clipboard
+}
+procedure GLPT_SetClipboardText(text: UnicodeString);
+
+{
+  Main entry function for iOS platforms
+}
 function GLPT_Main(argc: cint; argv: pchar): cint; cdecl; external;
+function GLPT_InitializeMain(argc: cint; argv: pchar): cint; cdecl; public;
 
 // Private functions exposed for extensions
 function glptError(const error: integer; const msg: string; fatal: boolean = false): integer;
@@ -1564,11 +1571,39 @@ begin
   result := GLPT_scancode_names[scancode];
 end;
 
-{$ifdef IPHONE}
-function main(argc: cint; argv: pchar): cint; cdecl; public;
+function GLPT_GetClipboardText: UnicodeString;
 begin
-  result := IPhone_Main;
+  {$IFDEF MSWINDOWS}
+  {$ENDIF}
+  {$IFDEF LINUX}
+  {$ENDIF}
+  {$IFDEF COCOA}
+    result := Cocoa_GetClipboardText;
+  {$ENDIF}
+  {$IFDEF IPHONE}
+  {$ENDIF}
 end;
-{$endif}
+
+procedure GLPT_SetClipboardText(text: UnicodeString);
+begin
+  {$IFDEF MSWINDOWS}
+  {$ENDIF}
+  {$IFDEF LINUX}
+  {$ENDIF}
+  {$IFDEF COCOA}
+  Cocoa_SetClipboardText(text);
+  {$ENDIF}
+  {$IFDEF IPHONE}
+  {$ENDIF}
+end;
+
+function GLPT_InitializeMain(argc: cint; argv: pchar): cint; cdecl; public;
+begin
+  {$ifdef IPHONE}
+  result := IPhone_Main;
+  {$else}
+  {$error Can't initialize main for this platform}
+  {$endif}
+end;
 
 end.

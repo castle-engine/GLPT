@@ -26,78 +26,47 @@ var
   GlobalInitFlags: GLPT_InitFlags = [];
   GlobalWindow: pGLPTWindow = nil;
 
-//#########################################################
-// COCOA UTILS
-//#########################################################
-
-operator := (right: array of NSObject): NSArray;
-var
-  i: integer;
-  arr: NSMutableArray;
-begin
-  arr := NSMutableArray.array_;
-  for i := 0 to high(right) do
-    arr.addObject(right[i]);
-  result := NSArray.arrayWithArray(arr);
-end;
-
-operator = (left: NSString; right: string): boolean;
-begin
-  result := (left.UTF8String = right);
-end;
-
-operator := (right: TObject): id;
-begin
-  result := CocoaObject(right);
-end;
-
-operator := (right: string): NSString;
-begin
-  result := NSSTR(right);
-end;
-
-operator explicit (right: NSObject): string;
-begin
-  if assigned(right) then
-    result := right.description.UTF8String
-  else
-    result := 'nil';
-end;
-
 {$if FPC_FULLVERSION <= 30004}
 type
   objcbool = bool;
 {$endif}
-  
-type
-  NSFileManager_Additions = objccategory external (NSFileManager)
-    function createDirectoryAtURL_withIntermediateDirectories_attributes_error (url: NSURL; createIntermediates: boolean; attributes: NSDictionary; error: NSErrorPtr): boolean; message 'createDirectoryAtURL:withIntermediateDirectories:attributes:error:'; { available in 10_7, 5_0 }
-  end;
-
-function NSSTR(str: string): NSString; overload;
-begin
-  result := NSString.stringWithCString_length(@str[1], length(str));
-end;
+ 
+{$include IPhoneAll15.inc}
 
 // GLPT forwards
 function IPhone_GetKeyboardShiftState: TShiftState; forward;
 function IPhone_GetTime: double; forward;
 
+{*****************************************************************************
+ *                               TGLPT_Window
+ *****************************************************************************}
+
 type
-  TGLPTWindow = objcclass (UIWindow)
+  TGLPT_Window = objcclass (UIWindow)
     private
       ref: pGLPTwindow;
   end;
+
+{*****************************************************************************
+ *                               TGLPT_UIView
+ *****************************************************************************}
 
 type
   TGLPT_UIView = objcclass (UIView)
     public
       function initWithFrame (frame: CGRect): id; override;
 
+      { Touches }
       procedure touchesBegan_withEvent (touches: NSSet; event: UIEvent); override;
       procedure touchesMoved_withEvent (touches: NSSet; event: UIEvent); override;
       procedure touchesEnded_withEvent (touches: NSSet; event: UIEvent); override;
       procedure touchesCancelled_withEvent (touches: NSSet; event: UIEvent); override;
+
+      { Presses }
+      procedure pressesBegan_withEvent (presses: NSSet; event: UIPressesEvent); override;
+      procedure pressesChanged_withEvent (presses: NSSet; event: UIPressesEvent); override;
+      procedure pressesEnded_withEvent (presses: NSSet; event: UIPressesEvent); override;
+      procedure pressesCancelled_withEvent (presses: NSSet; event: UIPressesEvent); override;
 
       procedure waitForMainLoop; message 'waitForMainLoop';
       procedure addDefaultGestures; message 'addDefaultGestures';
@@ -111,12 +80,6 @@ type
       procedure panGesture (sender: UIPanGestureRecognizer); message 'panGesture:';
       procedure rotationGesture (sender: UIRotationGestureRecognizer); message 'rotationGesture:';
       procedure longPressGesture (sender: UILongPressGestureRecognizer); message 'longPressGesture:';
-  end;
-
-type
-  UITouch_Additions = objccategory external (UITouch)
-    // iOS 9+
-    function force: CGFloat; message 'force';
   end;
 
 function PressureForTouch(touch: UITouch): single;
@@ -140,6 +103,7 @@ begin
   params.touch.radius := touch.majorRadius;
   result := params;
 end;
+
 function MessageParamsForTouches(view: UIView; touches: NSSet): GLPT_MessageParams;
 var
   touch: UITouch;
@@ -164,6 +128,34 @@ begin
       params.touch.fingers[fingerID].pressure := PressureForTouch(touch);
       params.touch.fingers[fingerID].radius := touch.majorRadius;
       inc(fingerID);
+    end;
+  result := params;
+end;
+
+function MessageParamsForPresses(view: UIView; presses: NSSet): GLPT_MessageParams;
+var
+  press: UIPress;
+  params: GLPT_MessageParams;
+  fingerID: integer = 0;
+begin
+  params := Default(GLPT_MessageParams);
+  for press in presses do
+    begin
+      //if fingerID = 0 then
+      //  begin
+      //    params.touch.x := Trunc(touch.locationInView(view).x);
+      //    params.touch.y := Trunc(touch.locationInView(view).y);
+      //    params.touch.pressure := PressureForTouch(touch);
+      //    params.touch.timestamp := IPhone_GetTime;
+      //    params.touch.tapCount := touch.tapCount;
+      //    params.touch.radius := touch.majorRadius;
+      //    params.touch.fingerCount := touches.count;
+      //  end;
+      //params.touch.fingers[fingerID].x := Trunc(touch.locationInView(view).x);
+      //params.touch.fingers[fingerID].y := Trunc(touch.locationInView(view).y);
+      //params.touch.fingers[fingerID].pressure := PressureForTouch(touch);
+      //params.touch.fingers[fingerID].radius := touch.majorRadius;
+      //inc(fingerID);
     end;
   result := params;
 end;
@@ -210,7 +202,7 @@ end;
 
 function TGLPT_UIView.owner: pGLPTwindow;
 begin
-  result := TGLPTWindow(window).ref;
+  result := TGLPT_Window(window).ref;
 end;
 
 function TGLPT_UIView.initWithFrame (frame: CGRect): id;
@@ -409,6 +401,29 @@ begin
   waitForMainLoop;
 end;
 
+procedure TGLPT_UIView.pressesBegan_withEvent (presses: NSSet; event: UIPressesEvent);
+begin
+  writeln('pressesBegan: ', presses.description.UTF8String);
+end;
+
+procedure TGLPT_UIView.pressesChanged_withEvent (presses: NSSet; event: UIPressesEvent);
+begin
+  writeln('pressesChanged: ', presses.description.UTF8String);
+end;
+
+procedure TGLPT_UIView.pressesEnded_withEvent (presses: NSSet; event: UIPressesEvent);
+begin
+end;
+
+procedure TGLPT_UIView.pressesCancelled_withEvent (presses: NSSet; event: UIPressesEvent);
+begin
+  
+end;
+
+{*****************************************************************************
+ *                              TOpenGLESView
+ *****************************************************************************}
+
 type
   TOpenGLESView = objcclass (TGLPT_UIView)
     public
@@ -417,13 +432,13 @@ type
       procedure didMoveToWindow; override;
       procedure dealloc; override;
       procedure waitForMainLoop; override;
-    private     
+    private
       eaglLayer: CAEAGLLayer;
       context: EAGLContext;
       colorRenderBuffer: GLuint;
       displayLink: CADisplayLink;
       displayLinkSemaphore,
-      mainLoopSemaphore: pGLPT_Semaphore;
+      mainLoopSemaphore: NSCondition;
       frameBuffer: GLuint;
       displayLinkSetup: boolean;
 
@@ -438,13 +453,13 @@ end;
 
 procedure TOpenGLESView.waitForMainLoop;
 begin
-  GLPT_SemaphoreWait(mainLoopSemaphore);
+  // TODO: this stopped working but do we need it now?
+  //mainLoopSemaphore.wait;
 end;
 
 procedure TOpenGLESView.renderDisplayLink(link: CADisplayLink);
 begin
-  //NSLog(['display link fired']);
-  GLPT_SemaphorePost(displayLinkSemaphore);
+  displayLinkSemaphore.signal;
 end;
 
 procedure TOpenGLESView.dealloc;
@@ -460,7 +475,10 @@ begin
     end;
 
   if assigned(displayLinkSemaphore) then
-    GLPT_DestroySemaphore(displayLinkSemaphore);
+    begin
+      displayLinkSemaphore.release;
+      displayLinkSemaphore := nil;
+    end;
 
   inherited dealloc;
 end;
@@ -473,7 +491,7 @@ begin
   params.rect.left := 0;
   params.rect.width  := Trunc(bounds.size.width);
   params.rect.height := Trunc(bounds.size.height);
-  glptPostMessage(TGLPTWindow(window).ref, GLPT_MESSAGE_RESIZE, params);      
+  glptPostMessage(TGLPT_Window(window).ref, GLPT_MESSAGE_RESIZE, params);
 
   // TODO: if you remove "layoutSubviews" we get Internal error 200303171
   // layoutSubviews is part of UIView category is probably why
@@ -540,11 +558,15 @@ begin
   if owner^.context.vsync then
     begin
       NSThread.detachNewThreadSelector_toTarget_withObject(objcselector('setupDisplayLink'), self, nil);
-      displayLinkSemaphore := GLPT_CreateSemaphore(0);
+      displayLinkSemaphore := NSCondition.alloc.init;
     end;
 
-  mainLoopSemaphore := GLPT_CreateSemaphore(0);  
+  mainLoopSemaphore := NSCondition.alloc.init;
 end;
+
+{*****************************************************************************
+ *                              TAppDelegate
+ *****************************************************************************}
 
 type
   TAppDelegate = objcclass(UIResponder, UIApplicationDelegateProtocol)
@@ -583,7 +605,7 @@ procedure TAppDelegate.enterUserProgram;
 var
   res: integer;
 begin
-  // TODO: we need to keep argc and argv now
+  // TODO: we need to keep argc and argv so we can pass it into GLPT_Main
   res := GLPT_Main(0, '');
   if res <> 0 then
     halt(res);
@@ -596,9 +618,9 @@ begin
   result := true;
 end;
 
-//#########################################################
-// GLPT FUNCTIONS
-//#########################################################
+{*****************************************************************************
+ *                             GLPT Functions
+ *****************************************************************************}
 
 procedure IPhone_Delay(ms: longint);
 begin
@@ -632,14 +654,14 @@ function IPhone_CreateWindow(win: pGLPTwindow; posx, posy, sizex, sizey: integer
 var
   controller: UIViewController;
   rootView: TOpenGLESView;
-  window: TGLPTWindow;
+  window: TGLPT_Window;
 begin
   // only one window is allowed on ios
   if GlobalWindow <> nil then
     exit(false);
 
   // create window
-  window := TGLPTWindow.alloc.initWithFrame(UIScreen.mainScreen.bounds);
+  window := TGLPT_Window.alloc.initWithFrame(UIScreen.mainScreen.bounds);
   window.ref := win;
   win^.ref := window;
   
@@ -647,7 +669,6 @@ begin
 
   // create root view controller
   controller := UIViewController.alloc.init.autorelease;
-  //controller.view.setBackgroundColor(UIColor.blueColor);
 
   // create openGLES view
   rootView := TOpenGLESView.alloc.initWithFrame(window.bounds);
@@ -679,7 +700,8 @@ begin
 
   // once the display link has been setup we can block waiting for it to fire
   if view.displayLinkSetup then
-    GLPT_SemaphoreWait(view.displayLinkSemaphore);
+    view.displayLinkSemaphore.wait;
+    
   view.context.presentRenderbuffer(GL_RENDERBUFFER_OES);
 end;
 
@@ -696,7 +718,7 @@ var
   view: TOpenGLESView;
 begin
   view := GetRootView(GlobalWindow);
-  GLPT_SemaphorePost(view.mainLoopSemaphore);
+  view.mainLoopSemaphore.signal;
 
   { Let the run loop run for a short amount of time: long enough for
     touch events to get processed (which is important to get certain

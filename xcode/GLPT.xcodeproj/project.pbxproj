@@ -146,7 +146,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Parasitic FPC binary injection\nset -e\n#fpcbuild \"$SRCROOT/../GLPT.sublime-project\" --target=\"iphone\"\ncp -f \"$SRCROOT/../$TARGET_NAME\" \"$BUILT_PRODUCTS_DIR/$EXECUTABLE_PATH\"\n";
+			shellScript = "# Parasitic FPC binary injection\nset -e\ncp -f \"$SRCROOT/../$TARGET_NAME\" \"$BUILT_PRODUCTS_DIR/$EXECUTABLE_PATH\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
