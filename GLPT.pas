@@ -851,10 +851,6 @@ type
 const
   GLPT_InitFlagsAll = [GLPT_Gestures];
 
-{ note(ryan): testing idea of "presentation mode" that syncs drawing with cursor }
-var
-  GLPT_PresentationMode: boolean = false;
-
 {
    This function returns the GLPT version as string.
    @return the GLPT version

@@ -516,11 +516,6 @@ label
 begin
   pool := NSAutoreleasePool.alloc.init;
   
-  // TODO: we need to specify this as a top-level setting
-  // because it's not window dependant like GLPT_context is
-  if GLPT_PresentationMode then
-    date := NSDate.distantFuture;
-
   event := nextEventMatchingMask_untilDate_inMode_dequeue(NSAnyEventMask, date, NSDefaultRunLoopMode, true);
   if event <> nil then
     begin
@@ -535,14 +530,6 @@ begin
       // this is to prevent a bug during live resize
       if not TCocoaWindow(event.window).isReadyToPoll then
         goto IgnoreEvent;
-
-      // force the next frame to draw regardless of vsync
-      if GLPT_PresentationMode then
-        begin
-          view := TOpenGLView(win^.ref.openGLView);
-          if assigned(view.displayLinkSemaphore) then
-            view.displayLinkSemaphore.signal;
-        end;
 
       case event.type_ of
         NSScrollWheel:
