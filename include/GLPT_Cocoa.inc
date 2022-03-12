@@ -845,7 +845,7 @@ begin
       params.rect.left := 0;
       params.rect.width  := Trunc(bounds.size.width);
       params.rect.height := Trunc(bounds.size.height);
-      glptPostMessage(windowRef, GLPT_MESSAGE_RESIZE, params);      
+      glptPostMessage(windowRef, GLPT_MESSAGE_RESIZE, params);
     end;
 end;
 
@@ -1244,6 +1244,12 @@ begin
       end;
   end;
 end;
+
+procedure Cocoa_SetWindowTitle(win: pGLPTwindow; value: string);
+begin
+  win^.ref.setTitle(NSSTR(value));
+end;
+
 function Cocoa_GetClipboardText: UnicodeString;
 begin
   result := NSPasteboard.generalPasteboard.stringForType(NSPasteboardTypeString).UTF8String;

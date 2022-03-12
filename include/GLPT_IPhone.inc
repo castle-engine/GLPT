@@ -54,7 +54,8 @@ type
 type
   TGLPT_UIView = objcclass (UIView)
     public
-      function initWithFrame (frame: CGRect): id; override;
+      function initWithFrame (_frame: CGRect): id; override;
+      procedure layoutSubviews; override;
 
       { Touches }
       procedure touchesBegan_withEvent (touches: NSSet; event: UIEvent); override;
@@ -67,8 +68,7 @@ type
       procedure pressesChanged_withEvent (presses: NSSet; event: UIPressesEvent); override;
       procedure pressesEnded_withEvent (presses: NSSet; event: UIPressesEvent); override;
       procedure pressesCancelled_withEvent (presses: NSSet; event: UIPressesEvent); override;
-
-      procedure waitForMainLoop; message 'waitForMainLoop';
+      
       procedure addDefaultGestures; message 'addDefaultGestures';
     private
       firstFingerDown: UITouch;
@@ -100,35 +100,8 @@ begin
   params.touch.pressure := PressureForTouch(touch);
   params.touch.timestamp := IPhone_GetTime;
   params.touch.tapCount := touch.tapCount;
-  params.touch.radius := touch.majorRadius;
-  result := params;
-end;
-
-function MessageParamsForTouches(view: UIView; touches: NSSet): GLPT_MessageParams;
-var
-  touch: UITouch;
-  params: GLPT_MessageParams;
-  fingerID: integer = 0;
-begin
-  params := Default(GLPT_MessageParams);
-  for touch in touches do
-    begin
-      if fingerID = 0 then
-        begin
-          params.touch.x := Trunc(touch.locationInView(view).x);
-          params.touch.y := Trunc(touch.locationInView(view).y);
-          params.touch.pressure := PressureForTouch(touch);
-          params.touch.timestamp := IPhone_GetTime;
-          params.touch.tapCount := touch.tapCount;
-          params.touch.radius := touch.majorRadius;
-          params.touch.fingerCount := touches.count;
-        end;
-      params.touch.fingers[fingerID].x := Trunc(touch.locationInView(view).x);
-      params.touch.fingers[fingerID].y := Trunc(touch.locationInView(view).y);
-      params.touch.fingers[fingerID].pressure := PressureForTouch(touch);
-      params.touch.fingers[fingerID].radius := touch.majorRadius;
-      inc(fingerID);
-    end;
+  params.touch.radius := touch.majorRadius - touch.majorRadiusTolerance;
+  params.touch.id := SizeUInt(touch);
   result := params;
 end;
 
@@ -136,26 +109,10 @@ function MessageParamsForPresses(view: UIView; presses: NSSet): GLPT_MessagePara
 var
   press: UIPress;
   params: GLPT_MessageParams;
-  fingerID: integer = 0;
 begin
   params := Default(GLPT_MessageParams);
   for press in presses do
     begin
-      //if fingerID = 0 then
-      //  begin
-      //    params.touch.x := Trunc(touch.locationInView(view).x);
-      //    params.touch.y := Trunc(touch.locationInView(view).y);
-      //    params.touch.pressure := PressureForTouch(touch);
-      //    params.touch.timestamp := IPhone_GetTime;
-      //    params.touch.tapCount := touch.tapCount;
-      //    params.touch.radius := touch.majorRadius;
-      //    params.touch.fingerCount := touches.count;
-      //  end;
-      //params.touch.fingers[fingerID].x := Trunc(touch.locationInView(view).x);
-      //params.touch.fingers[fingerID].y := Trunc(touch.locationInView(view).y);
-      //params.touch.fingers[fingerID].pressure := PressureForTouch(touch);
-      //params.touch.fingers[fingerID].radius := touch.majorRadius;
-      //inc(fingerID);
     end;
   result := params;
 end;
@@ -205,19 +162,18 @@ begin
   result := TGLPT_Window(window).ref;
 end;
 
-function TGLPT_UIView.initWithFrame (frame: CGRect): id;
+function TGLPT_UIView.initWithFrame (_frame: CGRect): id;
 begin
-  result := inherited initWithFrame(frame);
+  result := inherited initWithFrame(_frame);
   if result <> nil then
     begin
       setMultipleTouchEnabled(true);
-      if GLPT_Gestures in GlobalInitFlags then
-        addDefaultGestures;
+      {
+        IMPORTANT: gestures are conflicting with touch events so we need to block them
+      }
+      //if GLPT_Gestures in GlobalInitFlags then
+      //  addDefaultGestures;
     end;
-end;
-
-procedure TGLPT_UIView.waitForMainLoop;
-begin
 end;
 
 procedure TGLPT_UIView.addDefaultGestures;
@@ -226,17 +182,25 @@ var
   tapGestureRecognizer: UITapGestureRecognizer;
   longPressGestureRecognizer: UILongPressGestureRecognizer;
   swipeGestureRecognizer: UISwipeGestureRecognizer;
-begin  
+begin
   // tap gesture
   tapGestureRecognizer := UITapGestureRecognizer.alloc.initWithTarget_action(self, objcselector('tapGesture:')).autorelease;
+  tapGestureRecognizer.setCancelsTouchesInView(false);
   addGestureRecognizer(tapGestureRecognizer);
+
+  // long press gesture
+  longPressGestureRecognizer := UILongPressGestureRecognizer.alloc.initWithTarget_action(self, objcselector('longPressGesture:')).autorelease;
+  longPressGestureRecognizer.setCancelsTouchesInView(false);
+  addGestureRecognizer(longPressGestureRecognizer);
 
   // pinch gesture
   gestureRecognizer := UIPinchGestureRecognizer.alloc.initWithTarget_action(self, objcselector('pinchGesture:')).autorelease;
+  gestureRecognizer.setCancelsTouchesInView(false);
   addGestureRecognizer(gestureRecognizer);
 
   // pan gesture
   gestureRecognizer := UIPanGestureRecognizer.alloc.initWithTarget_action(self, objcselector('panGesture:')).autorelease;
+  gestureRecognizer.setCancelsTouchesInView(false);
   addGestureRecognizer(gestureRecognizer);
 
   // swipe gesture
@@ -245,15 +209,13 @@ begin
                                       UISwipeGestureRecognizerDirectionLeft + 
                                       UISwipeGestureRecognizerDirectionUp + 
                                       UISwipeGestureRecognizerDirectionDown);
+  swipeGestureRecognizer.setCancelsTouchesInView(false);
   addGestureRecognizer(swipeGestureRecognizer);
 
   // rotation gesture
   gestureRecognizer := UIRotationGestureRecognizer.alloc.initWithTarget_action(self, objcselector('rotationGesture:')).autorelease;
+  gestureRecognizer.setCancelsTouchesInView(false);
   addGestureRecognizer(gestureRecognizer);
-
-  // long press gesture
-  longPressGestureRecognizer := UILongPressGestureRecognizer.alloc.initWithTarget_action(self, objcselector('longPressGesture:')).autorelease;
-  addGestureRecognizer(longPressGestureRecognizer);
 end;
 
 procedure TGLPT_UIView.touchesBegan_withEvent (touches: NSSet; event: UIEvent);
@@ -265,21 +227,23 @@ begin
 
   for touch in touches do
     begin
-      // simulate mouse moved
-      params := SimulatedMouseMessageParamsForTouch(self, touch);
-      glptPostMessage(owner, GLPT_MESSAGE_MOUSEMOVE, params);
+      if firstFingerDown = nil then
+        begin
+          // simulate mouse moved
+          params := SimulatedMouseMessageParamsForTouch(self, touch);
+          glptPostMessage(owner, GLPT_MESSAGE_MOUSEMOVE, params);
 
-      // simulate mouse down
-      params := SimulatedMouseMessageParamsForTouch(self, touch);
-      params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
-      glptPostMessage(owner, GLPT_MESSAGE_MOUSEDOWN, params);
+          // simulate mouse down
+          params := SimulatedMouseMessageParamsForTouch(self, touch);
+          params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
+          glptPostMessage(owner, GLPT_MESSAGE_MOUSEDOWN, params);
 
-      firstFingerDown := touch;
-      break;
+          firstFingerDown := touch;
+        end;
+
+      params := MessageParamsForTouch(self, touch);
+      glptPostMessage(owner, GLPT_MESSAGE_TOUCH_DOWN, params);
     end;
-
-  params := MessageParamsForTouches(self, touches);
-  glptPostMessage(owner, GLPT_MESSAGE_TOUCH_DOWN, params);
 end;
 
 procedure TGLPT_UIView.touchesMoved_withEvent (touches: NSSet; event: UIEvent);
@@ -294,11 +258,10 @@ begin
           params := SimulatedMouseMessageParamsForTouch(self, touch);
           glptPostMessage(owner, GLPT_MESSAGE_MOUSEMOVE, params);
         end;
-    end;
 
-  params := MessageParamsForTouches(self, touches);
-  glptPostMessage(owner, GLPT_MESSAGE_TOUCH_MOTION, params);
-  waitForMainLoop;
+      params := MessageParamsForTouch(self, touch);
+      glptPostMessage(owner, GLPT_MESSAGE_TOUCH_MOTION, params);
+    end;
 end;
 
 procedure TGLPT_UIView.touchesEnded_withEvent (touches: NSSet; event: UIEvent);
@@ -307,16 +270,18 @@ var
   touch: UITouch;
 begin
   for touch in touches do
-    if touch = firstFingerDown then
-      begin
-        params := SimulatedMouseMessageParamsForTouch(self, touch);
-        params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
-        glptPostMessage(owner, GLPT_MESSAGE_MOUSEUP, params);
-        firstFingerDown := nil;
-      end;
+    begin
+      if touch = firstFingerDown then
+        begin
+          params := SimulatedMouseMessageParamsForTouch(self, touch);
+          params.mouse.buttons := GLPT_MOUSE_BUTTON_LEFT;
+          glptPostMessage(owner, GLPT_MESSAGE_MOUSEUP, params);
+          firstFingerDown := nil;
+        end;
 
-  params := MessageParamsForTouches(self, touches);
-  glptPostMessage(owner, GLPT_MESSAGE_TOUCH_UP, params);
+      params := MessageParamsForTouch(self, touch);
+      glptPostMessage(owner, GLPT_MESSAGE_TOUCH_UP, params);
+    end;
 end;
 
 procedure TGLPT_UIView.touchesCancelled_withEvent (touches: NSSet; event: UIEvent);
@@ -341,7 +306,6 @@ begin
   params.gesture.scale := sender.scale;
   params.gesture.velocity := sender.velocity;
   glptPostMessage(owner, GLPT_MESSAGE_GESTURE_PINCH, params);
-  waitForMainLoop;
 end;
 
 procedure TGLPT_UIView.swipeGesture (sender: UISwipeGestureRecognizer);
@@ -360,7 +324,6 @@ begin
       params.gesture.direction := 1;
   end;
   glptPostMessage(owner, GLPT_MESSAGE_GESTURE_SWIPE, params);
-  waitForMainLoop;
 end;
 
 procedure TGLPT_UIView.panGesture (sender: UIPanGestureRecognizer);
@@ -378,7 +341,6 @@ begin
     end;
 
   glptPostMessage(owner, GLPT_MESSAGE_GESTURE_PAN, params);
-  waitForMainLoop;
 end;
 
 procedure TGLPT_UIView.rotationGesture (sender: UIRotationGestureRecognizer);
@@ -389,7 +351,6 @@ begin
   params.gesture.rotation := sender.rotation;
   params.gesture.velocity := sender.velocity;
   glptPostMessage(owner, GLPT_MESSAGE_GESTURE_ROTATE, params);
-  waitForMainLoop;
 end;
 
 procedure TGLPT_UIView.longPressGesture (sender: UILongPressGestureRecognizer);
@@ -398,26 +359,37 @@ var
 begin
   params := MessageParamsForGesture(self, sender);
   glptPostMessage(owner, GLPT_MESSAGE_GESTURE_LONG_PRESS, params);
-  waitForMainLoop;
 end;
 
 procedure TGLPT_UIView.pressesBegan_withEvent (presses: NSSet; event: UIPressesEvent);
 begin
-  writeln('pressesBegan: ', presses.description.UTF8String);
+  inherited pressesBegan_withEvent(presses, event);
 end;
 
 procedure TGLPT_UIView.pressesChanged_withEvent (presses: NSSet; event: UIPressesEvent);
 begin
-  writeln('pressesChanged: ', presses.description.UTF8String);
+  inherited pressesChanged_withEvent(presses, event);
 end;
 
 procedure TGLPT_UIView.pressesEnded_withEvent (presses: NSSet; event: UIPressesEvent);
 begin
+  inherited pressesEnded_withEvent(presses, event);
 end;
 
 procedure TGLPT_UIView.pressesCancelled_withEvent (presses: NSSet; event: UIPressesEvent);
 begin
-  
+  inherited pressesCancelled_withEvent(presses, event);
+end;
+
+procedure TGLPT_UIView.layoutSubviews;
+var
+  params: GLPT_MessageParams;
+begin
+  params.rect.top := 0;
+  params.rect.left := 0;
+  params.rect.width  := Trunc(bounds.size.width);
+  params.rect.height := Trunc(bounds.size.height);
+  glptPostMessage(TGLPT_Window(window).ref, GLPT_MESSAGE_RESIZE, params);
 end;
 
 {*****************************************************************************
@@ -428,14 +400,13 @@ type
   TOpenGLESView = objcclass (TGLPT_UIView)
     public
       class function layerClass: pobjc_class; override;
-      procedure layoutSubviews; override;
       procedure didMoveToWindow; override;
+      procedure layoutSubviews; override;
       procedure dealloc; override;
-      procedure waitForMainLoop; override;
     private
       eaglLayer: CAEAGLLayer;
       context: EAGLContext;
-      colorRenderBuffer: GLuint;
+      renderBuffer: GLuint;
       displayLink: CADisplayLink;
       displayLinkSemaphore,
       mainLoopSemaphore: NSCondition;
@@ -451,15 +422,23 @@ begin
   result := CAEAGLLayer.classClass;
 end;
 
-procedure TOpenGLESView.waitForMainLoop;
-begin
-  // TODO: this stopped working but do we need it now?
-  //mainLoopSemaphore.wait;
-end;
-
 procedure TOpenGLESView.renderDisplayLink(link: CADisplayLink);
 begin
   displayLinkSemaphore.signal;
+end;
+
+procedure TOpenGLESView.layoutSubviews;
+begin
+  // resize render buffer
+  if renderBuffer > 0 then
+    begin
+      glBindRenderbufferOES(GL_RENDERBUFFER_OES, renderBuffer);
+      context.renderbufferStorage_fromDrawable(GL_RENDERBUFFER_OES, eaglLayer);
+      glBindFramebufferOES(GL_FRAMEBUFFER_OES, frameBuffer);
+      glFramebufferRenderbufferOES(GL_FRAMEBUFFER_OES, GL_COLOR_ATTACHMENT0_OES, GL_RENDERBUFFER_OES, renderBuffer);
+    end; 
+
+  inherited;
 end;
 
 procedure TOpenGLESView.dealloc;
@@ -483,21 +462,6 @@ begin
   inherited dealloc;
 end;
 
-procedure TOpenGLESView.layoutSubviews;
-var
-  params: GLPT_MessageParams;
-begin
-  params.rect.top := 0;
-  params.rect.left := 0;
-  params.rect.width  := Trunc(bounds.size.width);
-  params.rect.height := Trunc(bounds.size.height);
-  glptPostMessage(TGLPT_Window(window).ref, GLPT_MESSAGE_RESIZE, params);
-
-  // TODO: if you remove "layoutSubviews" we get Internal error 200303171
-  // layoutSubviews is part of UIView category is probably why
-  inherited layoutSubviews;
-end;
-
 procedure TOpenGLESView.setupDisplayLink;
 var
   pool: NSAutoreleasePool;
@@ -518,6 +482,8 @@ var
   major, minor: cuint;
 begin
   inherited didMoveToWindow;
+
+  setContentScaleFactor(1.0);
 
   // setup EAGLContext
   eaglLayer := CAEAGLLayer(layer);
@@ -540,18 +506,17 @@ begin
   EAGLContext.setCurrentContext(context);
 
   EAGLGetVersion(@major, @minor);
-  //writeln('Requested API: ', owner^.context.glesVersion, ' (got ', context.API, ')');
   writeln('EAGL version: ', major,'.',minor);
 
   // setup render buffer
-  glGenRenderbuffersOES(1, @colorRenderBuffer);
-  glBindRenderbufferOES(GL_RENDERBUFFER_OES, colorRenderBuffer);
+  glGenRenderbuffersOES(1, @renderBuffer);
+  glBindRenderbufferOES(GL_RENDERBUFFER_OES, renderBuffer);
   context.renderbufferStorage_fromDrawable(GL_RENDERBUFFER_OES, eaglLayer);
 
   // setup default frame buffer
   glGenFramebuffersOES(1, @frameBuffer);
   glBindFramebufferOES(GL_FRAMEBUFFER_OES, frameBuffer);
-  glFramebufferRenderbufferOES(GL_FRAMEBUFFER_OES, GL_COLOR_ATTACHMENT0_OES, GL_RENDERBUFFER_OES, colorRenderBuffer);
+  glFramebufferRenderbufferOES(GL_FRAMEBUFFER_OES, GL_COLOR_ATTACHMENT0_OES, GL_RENDERBUFFER_OES, renderBuffer);
 
   owner^.glcontext := context;
 
@@ -672,7 +637,7 @@ begin
 
   // create openGLES view
   rootView := TOpenGLESView.alloc.initWithFrame(window.bounds);
-  controller.view.addSubView(rootView);
+  controller.setView(rootView);
 
   window.setRootViewController(controller);
   window.makeKeyAndVisible;
@@ -682,7 +647,7 @@ end;
 
 function GetRootView(win: pGLPTwindow): TOpenGLESView;
 begin
-  result := TOpenGLESView(win^.ref.rootViewController.view.subviews.objectAtIndex(0));
+  result := TOpenGLESView(win^.ref.rootViewController.view);
 end;
 
 function IPhone_MakeCurrent(win: pGLPTwindow): boolean;
@@ -731,7 +696,6 @@ begin
   { Make sure UIScrollView objects scroll properly. }
   while CFRunLoopRunInMode(CFStringRef(UITrackingRunLoopMode), kSeconds, true) = kCFRunLoopRunHandledSource do 
     ;
-
 end;
 
 procedure IPhone_GetDisplayCoords(var dr: GLPTRect);

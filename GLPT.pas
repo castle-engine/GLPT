@@ -28,7 +28,7 @@ unit GLPT;
   {$define COCOA}
 {$ENDIF}
 
-{$IF defined(CPUARM) or defined(CPUAARCH64)}
+{$IF (defined(CPUARM) or defined(CPUAARCH64)) and not defined(DARWIN)}
   {$define IPHONE}
   {$undef COCOA}
 {$ENDIF}
@@ -738,23 +738,15 @@ type
     timestamp: TDateTime;      //< timestamp when event was generated
     clicks: byte;              //< number of mouse clicks associated with event
   end;
-
-  GLPT_MsgParmFinger = record
-    x: integer;                //< X position of the touch
-    y: integer;                //< Y position of the touch
-    pressure: single;          //< pressure of the touch, or 1 if not available
-    radius: single;
-  end;
   
   GLPT_MsgParmTouch = record
     x: integer;                //< X position of the touch
     y: integer;                //< Y position of the touch
     pressure: single;          //< pressure of the touch, or 1 if not available
-    radius: single;
+    radius: single;            //< radius (in points) of the touch.
     timestamp: TDateTime;      //< timestamp when event was generated
-    tapCount: integer;
-    fingerCount: byte;         //< the number of fingers in the touch
-    fingers: array[0..7] of GLPT_MsgParmFinger;
+    tapCount: integer;         //< number of times the finger was tapped for this given touch.
+    id: SizeUInt;              //< unique id of the touch (for multiple finger touches)
   end;
 
   GLPT_MsgParmGesture = record
@@ -778,7 +770,7 @@ type
   end;
 
   GLPT_MsgParmKeyboard = record
-    keycode: GLPT_Keycode;     
+    keycode: GLPT_Keycode;
     scancode: GLPT_Scancode;
     shiftstate: TShiftState;   //< shift state of the keyboard
   end;
@@ -907,6 +899,13 @@ function GLPT_WindowShouldClose(win: pGLPTwindow): boolean;
    @param Value: the value that should be given to the internal state variable
 }
 procedure GLPT_SetWindowShouldClose(win: pGLPTwindow; Value: boolean);
+
+{
+   Sets the window title
+   @param win: the window that should be closed
+   @param Value: the window title
+}
+procedure GLPT_SetWindowTitle(win: pGLPTwindow; Value: string);
 
 {
   Returns default OpenGL context settings.
@@ -1319,6 +1318,13 @@ begin
   win^.shouldClose := value;
 end;
 
+procedure GLPT_SetWindowTitle(win: pGLPTwindow; value: string);
+begin
+  {$IFDEF COCOA}
+    Cocoa_SetWindowTitle(win, Value);
+  {$ENDIF}
+end;
+
 function GLPT_GetDefaultContext: GLPT_Context;
 begin
   result.colorSize := 24;
@@ -1484,18 +1490,23 @@ var
   event: pGLPT_MessageRec;
   win: pGLPTWindow;
 begin
-  GLPT_PollEvents(event);
+  while true do
+    begin
+      GLPT_PollEvents(event);
 
-  if event <> nil then
-  begin
-    win := event^.win;
-    if win > nil then
-      if win^.event_callback <> nil then
-        win^.event_callback(event);
+      if event <> nil then
+        begin
+          win := event^.win;
+          if win > nil then
+            if win^.event_callback <> nil then
+              win^.event_callback(event);
 
-    glptDeleteMessage(event);
-    lastPolledEvent := nil;
-  end;
+          glptDeleteMessage(event);
+          lastPolledEvent := nil;
+        end
+      else
+        break;
+    end;
 end;
 
 procedure GLPT_SetCursor(cursor: byte);
@@ -1598,7 +1609,8 @@ begin
   {$ifdef IPHONE}
   result := IPhone_Main;
   {$else}
-  {$error Can't initialize main for this platform}
+  writeln('Can''t initialize main for this platform');
+  Halt(1);
   {$endif}
 end;
 
