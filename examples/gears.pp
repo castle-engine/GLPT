@@ -12,13 +12,14 @@ program gears;
 {$mode objfpc}
 
 uses
+  {$ifdef UNIX} CThreads, {$endif}
   StrUtils,
   GL,
   GLPT;
 
 (**
 
-  Draw a gear wheel.  You'll probably wglpt to call this function when
+  Draw a gear wheel.  You'll probably want to call this function when
   building a display list since we do a lot of trig here.
 
   Input:  inner_radius - radius of hole at center
