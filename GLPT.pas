@@ -1008,6 +1008,18 @@ function GLPT_GetPrefPath (org: string; app: string): string;
 function GLPT_GetScancodeName (scancode: GLPT_Scancode): string;
 
 {
+  Get the scancode corresponding to the given key code according to the current keyboard layout.
+  @return scancode
+}
+function GLPT_GetScancodeFromKey (keycode: GLPT_Keycode): GLPT_Scancode;
+
+{
+  Get the key code corresponding to the given scancode according to the current keyboard layout.
+  @return keycode
+}
+function GLPT_GetKeyFromScancode (scancode: GLPT_Scancode): GLPT_Keycode;
+
+{
   Gets the clipboard contents
   @return text contents of clipboard
 }
@@ -1576,6 +1588,32 @@ end;
 function GLPT_GetScancodeName (scancode: GLPT_Scancode): string;
 begin
   result := GLPT_scancode_names[scancode];
+end;
+
+function GLPT_GetScancodeFromKey (keycode: GLPT_Keycode): GLPT_Scancode;
+begin
+  {$IFDEF MSWINDOWS}
+  {$ENDIF}
+  {$IFDEF LINUX}
+  {$ENDIF}
+  {$IFDEF COCOA}
+    result := darwin_scancode_table[keycode];
+  {$ENDIF}
+  {$IFDEF IPHONE}
+  {$ENDIF}
+end;
+
+function GLPT_GetKeyFromScancode (scancode: GLPT_Scancode): GLPT_Keycode;
+begin
+  {$IFDEF MSWINDOWS}
+  {$ENDIF}
+  {$IFDEF LINUX}
+  {$ENDIF}
+  {$IFDEF COCOA}
+    result := GLPT_default_keymap[scancode];
+  {$ENDIF}
+  {$IFDEF IPHONE}
+  {$ENDIF}
 end;
 
 function GLPT_GetClipboardText: UnicodeString;
