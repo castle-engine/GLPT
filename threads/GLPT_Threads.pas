@@ -41,7 +41,6 @@ unit GLPT_Threads;
 {$IFDEF COCOA}
   {$modeswitch advancedrecords}
   {$modeswitch objectivec2}
-  {$linkframework CoreVideo}
 {$ENDIF}
 
 {$IFDEF IPHONE}
@@ -100,8 +99,17 @@ function GLPT_CreateThread(start: GLPT_ThreadFunction;
                            name: string = ''; 
                            userData: pointer = nil; 
                            stacksize: integer = GLPT_THREAD_DEFAULT_STACK_SIZE): pGLPT_Thread;
+
+{ Let a thread clean up on exit without intervention.
+  A thread may be "detached" to signify that it should not remain until another 
+  thread has called GLPT_WaitThread() on it. Detaching a thread is useful for 
+  long-running threads that nothing needs to synchronize with or further manage. 
+  When a detached thread is done, it simply goes away. }
+
 procedure GLPT_DetachThread(thread: pGLPT_Thread);
+{ Wait for a thread to finish. }
 procedure GLPT_WaitThread(var thread: pGLPT_Thread; var status: integer);
+{ Get the thread identifier for the current thread. }
 function GLPT_ThreadID: GLPT_Thread_ID;
 function GLPT_RunThread(thread: pGLPT_Thread): pointer; cdecl;
 
@@ -133,9 +141,13 @@ type
 
 function GLPT_CreateCondition: pGLPT_Condition;
 procedure GLPT_DestroyCondition(var condition: pGLPT_Condition);
+{ Restart one of the threads that are waiting on the condition variable. }
 function GLPT_ConditionSignal(condition: pGLPT_Condition): integer;
+{ Restart all threads that are waiting on the condition variable. }
 function GLPT_ConditionBroadcast(condition: pGLPT_Condition): integer;
+{ Wait until a condition variable is signaled or a certain time has passed. }
 function GLPT_ConditionWaitTimeout(condition: pGLPT_Condition; mutex: pGLPT_Mutex; ms: longint): integer;
+{ Wait until a condition variable is signaled. }
 function GLPT_ConditionWait(condition: pGLPT_Condition; mutex: pGLPT_Mutex): integer;
 
 { Semaphore }
@@ -154,10 +166,15 @@ type
 
 function GLPT_CreateSemaphore(initial_value: integer = 0): pGLPT_Semaphore;
 procedure GLPT_DestroySemaphore(var sem: pGLPT_Semaphore);
+{ See if a semaphore has a positive value and decrement it if it does. }
 function GLPT_SemaphoreTryWait(sem: pGLPT_Semaphore): integer;
+{ Wait until a semaphore has a positive value and then decrements it. }
 function GLPT_SemaphoreWait(sem: pGLPT_Semaphore): integer;
+{ Wait until a semaphore has a positive value and then decrements it. }
 function GLPT_SemaphoreWaitTimeout(sem: pGLPT_Semaphore; timeout: longint): integer;
+{ Get the current value of a semaphore. }
 function GLPT_SemaphoreValue(sem: pGLPT_Semaphore): integer;
+{ Atomically increment a semaphore's value and wake waiting threads. }
 function GLPT_SemaphorePost(sem: pGLPT_Semaphore): integer;
 
 implementation
@@ -559,6 +576,9 @@ var
   success: boolean;
   thread: pGLPT_Thread;
 begin
+  if stackSize = 0 then
+    stackSize := GLPT_THREAD_DEFAULT_STACK_SIZE;
+
   thread := pGLPT_Thread(calloc(sizeof(GLPT_Thread)));
   thread^.start := start;
   thread^.name := name;

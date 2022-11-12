@@ -236,4 +236,6 @@ begin
     end
   else
     result := true;
+
+  pthread_attr_destroy(@attr);
 end;
