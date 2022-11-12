@@ -625,7 +625,6 @@ begin
   pool.release;
 end;
 
-
 // note: setValues_forParameter in RTL headers is parsed wrong
 // todo: this is fixed in 10_10 headers which appear in FPC 3.2+
 type
