@@ -878,7 +878,7 @@ procedure GLPT_Delay(ms: longint);
    Initializes the GLPT library
    @return True if successfull otherwise False
 }
-function GLPT_Init (flags: GLPT_InitFlags = GLPT_InitFlagsAll): boolean;
+function GLPT_Init(flags: GLPT_InitFlags = GLPT_InitFlagsAll): boolean;
 
 {
    Terminates the GLPT library
@@ -906,6 +906,19 @@ procedure GLPT_SetWindowShouldClose(win: pGLPTwindow; Value: boolean);
    @param Value: the window title
 }
 procedure GLPT_SetWindowTitle(win: pGLPTwindow; Value: string);
+
+{
+   Sets the window fullscreen
+   @param win: the window to change fullscreen mode
+}
+procedure GLPT_SetWindowFullscreen(win: pGLPTwindow; value: boolean);
+
+
+{
+   Gets the window fullscreen state
+   @param win: the window to check fullscreen mode
+}
+function GLPT_IsWindowFullscreen(win: pGLPTwindow): boolean;
 
 {
   Returns default OpenGL context settings.
@@ -1334,6 +1347,20 @@ procedure GLPT_SetWindowTitle(win: pGLPTwindow; value: string);
 begin
   {$IFDEF COCOA}
     Cocoa_SetWindowTitle(win, Value);
+  {$ENDIF}
+end;
+
+procedure GLPT_SetWindowFullscreen(win: pGLPTwindow; value: boolean);
+begin
+  {$IFDEF COCOA}
+    Cocoa_SetWindowFullscreen(win, Value);
+  {$ENDIF}
+end;
+
+function GLPT_IsWindowFullscreen(win: pGLPTwindow): boolean;
+begin
+  {$IFDEF COCOA}
+    result := Cocoa_IsWindowFullscreen(win);
   {$ENDIF}
 end;
 

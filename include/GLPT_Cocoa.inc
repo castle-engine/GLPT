@@ -1249,6 +1249,18 @@ begin
   win^.ref.setTitle(NSSTR(value));
 end;
 
+function Cocoa_IsWindowFullscreen(win: pGLPTwindow): boolean;
+begin
+  result := TCocoaWindow(win^.ref).isFullScreen;
+end;
+
+procedure Cocoa_SetWindowFullscreen(win: pGLPTwindow; value: boolean);
+begin
+  if (value and not TCocoaWindow(win^.ref).isFullScreen) or 
+    (not value and TCocoaWindow(win^.ref).isFullScreen) then
+    win^.ref.performSelector_withObject_afterDelay(objcselector('toggleFullScreen:'), nil, 0.0);
+end;
+
 function Cocoa_GetClipboardText: UnicodeString;
 begin
   result := NSPasteboard.generalPasteboard.stringForType(NSPasteboardTypeString).UTF8String;
